@@ -1,13 +1,20 @@
 import axios from "axios";
 
-const baseURL = import.meta.env.VITE_API_URL?.replace(/\/$/, "") || "http://localhost:5000/api";
+const API = axios.create({
+  baseURL: import.meta.env.VITE_API_URL, // ✅ should point to your backend on Railway
+});
 
-const API = axios.create({ baseURL });
-
+// ✅ Automatically attach JWT token to every request
 API.interceptors.request.use((config) => {
-  const user = JSON.parse(localStorage.getItem("user"));
-  if (user?.token) {
-    config.headers.Authorization = `Bearer ${user.token}`;
+  try {
+    const user = JSON.parse(localStorage.getItem("user"));
+    if (user?.token) {
+      config.headers.Authorization = `Bearer ${user.token}`;
+    } else {
+      console.warn("⚠️ No token found in localStorage");
+    }
+  } catch (err) {
+    console.warn("⚠️ Error parsing user token:", err);
   }
   return config;
 });

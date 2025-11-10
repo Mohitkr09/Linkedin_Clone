@@ -9,16 +9,26 @@ import Profile from "./pages/Profile";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 
-// ✅ Route wrapper for protected routes
+/* ========================================================
+   ✅ Protect routes for authenticated users only
+======================================================== */
 function PrivateRoute({ children }) {
   const user = JSON.parse(localStorage.getItem("user"));
   return user ? children : <Navigate to="/login" replace />;
 }
 
+/* ========================================================
+   ✅ Redirect logged-in users away from /login and /register
+======================================================== */
+function PublicRoute({ children }) {
+  const user = JSON.parse(localStorage.getItem("user"));
+  return user ? <Navigate to="/feed" replace /> : children;
+}
+
 export default function App() {
   const location = useLocation();
 
-  // Hide navbar on login/register pages
+  // ✅ Hide NavBar on auth pages
   const hideNav = ["/login", "/register"].includes(location.pathname);
 
   return (
@@ -26,7 +36,7 @@ export default function App() {
       {!hideNav && <NavBar />}
 
       <Routes>
-        {/* ✅ Feed (Home) */}
+        {/* ✅ Protected Pages */}
         <Route
           path="/"
           element={
@@ -35,8 +45,6 @@ export default function App() {
             </PrivateRoute>
           }
         />
-
-        {/* ✅ Network Page */}
         <Route
           path="/network"
           element={
@@ -45,8 +53,6 @@ export default function App() {
             </PrivateRoute>
           }
         />
-
-        {/* ✅ Jobs Page */}
         <Route
           path="/jobs"
           element={
@@ -55,8 +61,6 @@ export default function App() {
             </PrivateRoute>
           }
         />
-
-        {/* ✅ Messaging List */}
         <Route
           path="/messaging"
           element={
@@ -65,8 +69,6 @@ export default function App() {
             </PrivateRoute>
           }
         />
-
-        {/* ✅ One-to-One Messaging (chat with specific user) */}
         <Route
           path="/messaging/:receiverId"
           element={
@@ -75,8 +77,6 @@ export default function App() {
             </PrivateRoute>
           }
         />
-
-        {/* ✅ Notifications */}
         <Route
           path="/notifications"
           element={
@@ -85,8 +85,6 @@ export default function App() {
             </PrivateRoute>
           }
         />
-
-        {/* ✅ My Profile */}
         <Route
           path="/profile"
           element={
@@ -95,8 +93,6 @@ export default function App() {
             </PrivateRoute>
           }
         />
-
-        {/* ✅ View Another User’s Profile */}
         <Route
           path="/profile/:id"
           element={
@@ -106,9 +102,23 @@ export default function App() {
           }
         />
 
-        {/* ✅ Auth Routes */}
-        <Route path="/login" element={<Login />} />
-        <Route path="/register" element={<Register />} />
+        {/* ✅ Auth Pages */}
+        <Route
+          path="/login"
+          element={
+            <PublicRoute>
+              <Login />
+            </PublicRoute>
+          }
+        />
+        <Route
+          path="/register"
+          element={
+            <PublicRoute>
+              <Register />
+            </PublicRoute>
+          }
+        />
 
         {/* ✅ Fallback */}
         <Route path="*" element={<Navigate to="/" />} />

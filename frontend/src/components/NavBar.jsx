@@ -32,28 +32,29 @@ export default function NavBar() {
   useEffect(() => {
     const handleStorageChange = () => {
       const updatedUser = JSON.parse(localStorage.getItem("user"));
-      if (updatedUser) setUser(updatedUser);
+      setUser(updatedUser);
     };
     window.addEventListener("storage", handleStorageChange);
     return () => window.removeEventListener("storage", handleStorageChange);
   }, []);
 
   /* ========================================================
-     ✅ Fetch unread notification count (with fallback)
+     ✅ Fetch unread notification count (skip if no token)
   ======================================================== */
   const fetchNotificationCount = async () => {
+    if (!user?.token) return; // ⛔ Skip if not logged in
+
     try {
       const res = await API.get("/connections/notifications");
-
-      // Handle both formats: [ ... ] or { notifications: [...] }
       const data = Array.isArray(res.data)
         ? res.data
         : res.data.notifications || [];
-
       const unread = data.filter((n) => !n.read).length;
       setNotifCount(unread);
     } catch (err) {
-      console.error("❌ Fetch notification count failed:", err);
+      if (err.response?.status !== 401) {
+        console.error("❌ Fetch notification count failed:", err);
+      }
       setNotifCount(0);
     }
   };
@@ -62,12 +63,16 @@ export default function NavBar() {
      ✅ Mark all as read when visiting /notifications
   ======================================================== */
   useEffect(() => {
-    if (currentPath === "/notifications") {
+    if (currentPath === "/notifications" && user?.token) {
       API.put("/connections/notifications/read")
         .then(() => setNotifCount(0))
-        .catch((err) => console.error("❌ Mark as read failed:", err));
+        .catch((err) => {
+          if (err.response?.status !== 401) {
+            console.error("❌ Mark as read failed:", err);
+          }
+        });
     }
-  }, [currentPath]);
+  }, [currentPath, user?.token]);
 
   /* ========================================================
      ✅ Setup Socket.IO for real-time notifications
@@ -75,7 +80,6 @@ export default function NavBar() {
   useEffect(() => {
     if (!user?._id) return;
 
-    // Use correct backend URL depending on environment
     const socketURL =
       import.meta.env.VITE_SOCKET_URL ||
       import.meta.env.VITE_API_URL?.replace("/api", "") ||
@@ -103,19 +107,18 @@ export default function NavBar() {
       });
     });
 
-    return () => {
-      socket.current.disconnect();
-    };
+    return () => socket.current.disconnect();
   }, [user?._id]);
 
   /* ========================================================
-     ✅ Periodic refresh of notifications
+     ✅ Periodic refresh (every 15s)
   ======================================================== */
   useEffect(() => {
+    if (!user?.token) return; // ⛔ Skip when logged out
     fetchNotificationCount();
     const interval = setInterval(fetchNotificationCount, 15000);
     return () => clearInterval(interval);
-  }, []);
+  }, [user?.token]);
 
   /* ========================================================
      ✅ Logout
@@ -123,6 +126,7 @@ export default function NavBar() {
   const handleLogout = () => {
     localStorage.removeItem("user");
     setUser(null);
+    setNotifCount(0);
     navigate("/login");
     toast.success("You have been logged out.");
   };
@@ -149,7 +153,6 @@ export default function NavBar() {
   return (
     <>
       <Toaster position="top-right" reverseOrder={false} />
-
       <nav className="bg-white border-b border-gray-200 fixed w-full top-0 z-50 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 flex items-center justify-between h-14">
           {/* Left Section */}
@@ -183,54 +186,48 @@ export default function NavBar() {
             ))}
 
             {/* Profile Dropdown */}
-            <div className="relative">
-              <button
-                onClick={() => setShowProfileMenu((prev) => !prev)}
-                className="flex flex-col items-center text-xs hover:text-black focus:outline-none"
-              >
-                <div className="relative">
-                  <img
-                    src={
-                      user?.avatar ||
-                      "https://cdn-icons-png.flaticon.com/512/3135/3135715.png"
-                    }
-                    alt="Me"
-                    className="w-6 h-6 rounded-full object-cover"
-                  />
-                </div>
-                <span>Me ▾</span>
-              </button>
-
-              {showProfileMenu && (
-                <div className="absolute right-0 mt-2 bg-white border rounded-lg shadow-lg w-48 p-2 z-50">
-                  <div className="px-3 py-2 border-b border-gray-200">
-                    <p className="font-semibold text-sm">{user?.name}</p>
-                    <p className="text-xs text-gray-500">{user?.headline}</p>
+            {user && (
+              <div className="relative">
+                <button
+                  onClick={() => setShowProfileMenu((prev) => !prev)}
+                  className="flex flex-col items-center text-xs hover:text-black focus:outline-none"
+                >
+                  <div className="relative">
+                    <img
+                      src={
+                        user.avatar ||
+                        "https://cdn-icons-png.flaticon.com/512/3135/3135715.png"
+                      }
+                      alt="Me"
+                      className="w-6 h-6 rounded-full object-cover"
+                    />
                   </div>
-                  <Link
-                    to="/profile"
-                    className="block text-sm px-3 py-2 hover:bg-gray-100 rounded"
-                    onClick={() => setShowProfileMenu(false)}
-                  >
-                    View Profile
-                  </Link>
-                  <button
-                    onClick={handleLogout}
-                    className="w-full text-left text-sm px-3 py-2 text-red-600 hover:bg-red-50 rounded"
-                  >
-                    Log out
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
+                  <span>Me ▾</span>
+                </button>
 
-          {/* Right Section */}
-          <div className="hidden lg:flex items-center space-x-6 text-gray-600 border-l pl-6">
-            <NavItem icon={<FaTh />} label="For Business" />
-            <button className="text-yellow-600 text-sm font-medium hover:underline">
-              Try Premium for ₹0
-            </button>
+                {showProfileMenu && (
+                  <div className="absolute right-0 mt-2 bg-white border rounded-lg shadow-lg w-48 p-2 z-50">
+                    <div className="px-3 py-2 border-b border-gray-200">
+                      <p className="font-semibold text-sm">{user.name}</p>
+                      <p className="text-xs text-gray-500">{user.headline}</p>
+                    </div>
+                    <Link
+                      to="/profile"
+                      className="block text-sm px-3 py-2 hover:bg-gray-100 rounded"
+                      onClick={() => setShowProfileMenu(false)}
+                    >
+                      View Profile
+                    </Link>
+                    <button
+                      onClick={handleLogout}
+                      className="w-full text-left text-sm px-3 py-2 text-red-600 hover:bg-red-50 rounded"
+                    >
+                      Log out
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Mobile Menu Button */}
@@ -242,7 +239,7 @@ export default function NavBar() {
           </button>
         </div>
 
-        {/* Mobile Dropdown Menu */}
+        {/* Mobile Dropdown */}
         {menuOpen && (
           <div className="md:hidden bg-white border-t border-gray-200 shadow-sm">
             <div className="flex flex-wrap justify-around py-3 text-gray-600">
@@ -255,27 +252,31 @@ export default function NavBar() {
                   <NavItem icon={item.icon} label={item.label} badge={item.badge} />
                 </Link>
               ))}
-              <Link
-                to="/profile"
-                onClick={() => setMenuOpen(false)}
-                className="flex items-center gap-1 text-gray-600 text-sm mt-2"
-              >
-                <img
-                  src={
-                    user?.avatar ||
-                    "https://cdn-icons-png.flaticon.com/512/3135/3135715.png"
-                  }
-                  alt="Avatar"
-                  className="w-5 h-5 rounded-full"
-                />
-                <span>Me</span>
-              </Link>
-              <button
-                onClick={handleLogout}
-                className="text-red-500 text-sm mt-2 hover:underline"
-              >
-                Log out
-              </button>
+              {user && (
+                <>
+                  <Link
+                    to="/profile"
+                    onClick={() => setMenuOpen(false)}
+                    className="flex items-center gap-1 text-gray-600 text-sm mt-2"
+                  >
+                    <img
+                      src={
+                        user.avatar ||
+                        "https://cdn-icons-png.flaticon.com/512/3135/3135715.png"
+                      }
+                      alt="Avatar"
+                      className="w-5 h-5 rounded-full"
+                    />
+                    <span>Me</span>
+                  </Link>
+                  <button
+                    onClick={handleLogout}
+                    className="text-red-500 text-sm mt-2 hover:underline"
+                  >
+                    Log out
+                  </button>
+                </>
+              )}
             </div>
           </div>
         )}
@@ -284,6 +285,7 @@ export default function NavBar() {
   );
 }
 
+/* ✅ NavItem Subcomponent */
 function NavItem({ icon, label, active, badge }) {
   return (
     <div
