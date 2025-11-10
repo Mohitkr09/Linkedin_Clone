@@ -1,4 +1,3 @@
-// server.js
 import express from "express";
 import http from "http";
 import { Server } from "socket.io";
@@ -29,11 +28,24 @@ app.use(express.json({ limit: "25mb" }));
 app.use(express.urlencoded({ limit: "25mb", extended: true }));
 
 /* ========================================================
-   ✅ CORS CONFIGURATION (Frontend: http://localhost:5173)
+   ✅ CORS CONFIGURATION (Local + Deployed Frontend)
 ======================================================== */
+const allowedOrigins = [
+  "http://localhost:5173",
+  "https://linkedin-clone-11eh.vercel.app", // ✅ Your Vercel frontend
+];
+
 app.use(
   cors({
-    origin: "http://localhost:5173",
+    origin: function (origin, callback) {
+      if (!origin) return callback(null, true); // Allow mobile/postman requests
+      if (allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        console.warn("🚫 Blocked by CORS:", origin);
+        callback(new Error("Not allowed by CORS"));
+      }
+    },
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
     allowedHeaders: ["Content-Type", "Authorization"],
@@ -61,7 +73,10 @@ const server = http.createServer(app);
 
 const io = new Server(server, {
   cors: {
-    origin: "http://localhost:5173",
+    origin: [
+      "http://localhost:5173",
+      "https://linkedin-clone-11eh.vercel.app",
+    ],
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
   },
 });
@@ -94,28 +109,28 @@ io.on("connection", (socket) => {
         return;
       }
 
-      console.log("📥 Message received for saving:", { senderId, receiverId, content });
+      console.log("📥 Message received for saving:", {
+        senderId,
+        receiverId,
+        content,
+      });
 
-      // ✅ Save message to MongoDB
       const newMessage = await Message.create({
         sender: senderId,
         receiver: receiverId,
         content,
       });
 
-      // ✅ Populate user details for front-end
       const populatedMsg = await newMessage.populate([
         { path: "sender", select: "name avatar" },
         { path: "receiver", select: "name avatar" },
       ]);
 
-      // ✅ Send message to receiver (if online)
       const receiverSocket = onlineUsers.get(receiverId);
       if (receiverSocket) {
         io.to(receiverSocket).emit("receiveMessage", populatedMsg);
       }
 
-      // ✅ Echo message to sender (so they see it instantly)
       socket.emit("receiveMessage", populatedMsg);
 
       console.log(`📩 Message sent from ${senderId} → ${receiverId}`);
@@ -124,7 +139,6 @@ io.on("connection", (socket) => {
     }
   });
 
-  // ✅ Handle user disconnection
   socket.on("disconnect", () => {
     for (const [userId, id] of onlineUsers.entries()) {
       if (id === socket.id) {
@@ -180,5 +194,6 @@ io.on("error", (err) => {
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
-  console.log("🌐 CORS enabled for http://localhost:5173");
+  console.log("🌐 CORS allowed for:");
+  console.log(allowedOrigins);
 });
