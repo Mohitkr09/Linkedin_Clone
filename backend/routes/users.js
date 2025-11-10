@@ -6,10 +6,14 @@ import {
   getUserProfile,
   updateUser,
   updateAvatar,
+  getAllUsers,
 } from "../controllers/userController.js";
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
+
+// ✅ VERY IMPORTANT: Define this BEFORE “/:id”
+router.get("/all", protect, getAllUsers);
 
 router.get("/me", protect, getMyProfile);
 router.get("/:id", protect, getUserProfile);

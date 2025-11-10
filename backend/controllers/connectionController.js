@@ -163,3 +163,19 @@ export const markNotificationsAsRead = async (req, res) => {
     res.status(500).json({ message: "Server error marking notifications as read" });
   }
 };
+
+// ✅ Get all sent connection requests (by current user)
+export const getSentRequests = async (req, res) => {
+  try {
+    // Find all users who have a pending request from this user
+    const users = await User.find({
+      "connectionRequests.from": req.user._id,
+    }).select("name avatar headline _id");
+
+    res.status(200).json(users);
+  } catch (error) {
+    console.error("❌ [Connections] Error fetching sent requests:", error);
+    res.status(500).json({ message: "Server error fetching sent requests" });
+  }
+};
+

@@ -1,21 +1,14 @@
 import axios from "axios";
 
 const API = axios.create({
-  baseURL: import.meta.env.VITE_API_URL, // ✅ should point to your backend on Railway
+  baseURL: import.meta.env.VITE_API_URL || "https://luminous-empathy-production.up.railway.app/api",
 });
 
-// ✅ Automatically attach JWT token to every request
+// ✅ attach token automatically
 API.interceptors.request.use((config) => {
-  try {
-    const user = JSON.parse(localStorage.getItem("user"));
-    if (user?.token) {
-      config.headers.Authorization = `Bearer ${user.token}`;
-    } else {
-      console.warn("⚠️ No token found in localStorage");
-    }
-  } catch (err) {
-    console.warn("⚠️ Error parsing user token:", err);
-  }
+  const user = JSON.parse(localStorage.getItem("user"));
+  const token = user?.token;
+  if (token) config.headers.Authorization = `Bearer ${token}`;
   return config;
 });
 
