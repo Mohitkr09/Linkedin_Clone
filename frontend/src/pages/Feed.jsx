@@ -14,14 +14,19 @@ export default function Feed() {
 
   const user = JSON.parse(localStorage.getItem("user"));
 
-  // ✅ Fetch all posts
+  /* ========================================================
+     ✅ Fetch all posts
+  ======================================================== */
   const fetchPosts = async () => {
     try {
       setLoading(true);
       const res = await API.get("/posts");
-      setPosts(res.data);
+      // Handle both array or object responses
+      const data = Array.isArray(res.data) ? res.data : res.data.posts;
+      setPosts(data || []);
     } catch (err) {
       console.error("❌ Fetch posts failed:", err);
+      setPosts([]);
     } finally {
       setLoading(false);
     }
@@ -31,7 +36,9 @@ export default function Feed() {
     fetchPosts();
   }, []);
 
-  // ✅ Create new post
+  /* ========================================================
+     ✅ Create new post
+  ======================================================== */
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!content.trim() && !file) {
@@ -49,10 +56,12 @@ export default function Feed() {
         headers: { "Content-Type": "multipart/form-data" },
       });
 
-      // ✅ Add new post instantly (backend returns the post object directly)
-      setPosts((prev) => [res.data, ...prev]);
+      // Handle if backend returns { post: {...} } or {...}
+      const newPost = res.data.post || res.data;
 
-      // ✅ Reset form
+      setPosts((prev) => [newPost, ...prev]);
+
+      // Reset form
       setContent("");
       setFile(null);
       setPreview(null);
@@ -65,7 +74,9 @@ export default function Feed() {
     }
   };
 
-  // ✅ Preview selected media
+  /* ========================================================
+     ✅ Preview selected media
+  ======================================================== */
   const handleFileChange = (e) => {
     const selected = e.target.files[0];
     if (!selected) return;
@@ -76,24 +87,26 @@ export default function Feed() {
     setPreview(URL.createObjectURL(selected));
   };
 
-  // ✅ Delete post instantly
+  /* ========================================================
+     ✅ Post modification handlers
+  ======================================================== */
   const handleDelete = (postId) => {
     setPosts((prev) => prev.filter((p) => p._id !== postId));
   };
 
-  // ✅ Update post instantly
   const handleEdit = (updatedPost) => {
     setPosts((prev) =>
       prev.map((p) => (p._id === updatedPost._id ? updatedPost : p))
     );
   };
 
-  // ✅ Handle shared post (instant update)
   const handleShare = (sharedPost) => {
-    // Add shared post to top of feed instantly
     setPosts((prev) => [sharedPost, ...prev]);
   };
 
+  /* ========================================================
+     ✅ Render
+  ======================================================== */
   return (
     <div className="bg-gray-50 min-h-screen flex justify-center py-8 px-4">
       <div className="w-full max-w-2xl">
@@ -196,7 +209,7 @@ export default function Feed() {
           </div>
         ) : (
           <div className="space-y-4">
-            {posts.length > 0 ? (
+            {Array.isArray(posts) && posts.length > 0 ? (
               posts.map((p) => (
                 <PostCard
                   key={p._id}
@@ -204,7 +217,7 @@ export default function Feed() {
                   currentUser={user}
                   onDelete={handleDelete}
                   onEdit={handleEdit}
-                  onShare={handleShare} // ✅ Added
+                  onShare={handleShare}
                 />
               ))
             ) : (

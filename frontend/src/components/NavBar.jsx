@@ -26,7 +26,9 @@ export default function NavBar() {
   const currentPath = location.pathname;
   const socket = useRef(null);
 
-  // ✅ Sync avatar in real-time when Profile updates localStorage
+  /* ========================================================
+     ✅ Sync user avatar (if localStorage updates)
+  ======================================================== */
   useEffect(() => {
     const handleStorageChange = () => {
       const updatedUser = JSON.parse(localStorage.getItem("user"));
@@ -36,18 +38,29 @@ export default function NavBar() {
     return () => window.removeEventListener("storage", handleStorageChange);
   }, []);
 
-  // ✅ Fetch unread notifications count
+  /* ========================================================
+     ✅ Fetch unread notification count (with fallback)
+  ======================================================== */
   const fetchNotificationCount = async () => {
     try {
       const res = await API.get("/connections/notifications");
-      const unread = res.data.filter((n) => !n.read).length;
+
+      // Handle both formats: [ ... ] or { notifications: [...] }
+      const data = Array.isArray(res.data)
+        ? res.data
+        : res.data.notifications || [];
+
+      const unread = data.filter((n) => !n.read).length;
       setNotifCount(unread);
     } catch (err) {
       console.error("❌ Fetch notification count failed:", err);
+      setNotifCount(0);
     }
   };
 
-  // ✅ Mark notifications as read when opening the notification page
+  /* ========================================================
+     ✅ Mark all as read when visiting /notifications
+  ======================================================== */
   useEffect(() => {
     if (currentPath === "/notifications") {
       API.put("/connections/notifications/read")
@@ -56,11 +69,19 @@ export default function NavBar() {
     }
   }, [currentPath]);
 
-  // ✅ Setup Socket.IO for real-time notifications
+  /* ========================================================
+     ✅ Setup Socket.IO for real-time notifications
+  ======================================================== */
   useEffect(() => {
     if (!user?._id) return;
 
-    socket.current = io("http://localhost:5000", {
+    // Use correct backend URL depending on environment
+    const socketURL =
+      import.meta.env.VITE_SOCKET_URL ||
+      import.meta.env.VITE_API_URL?.replace("/api", "") ||
+      "http://localhost:5000";
+
+    socket.current = io(socketURL, {
       transports: ["websocket"],
       reconnection: true,
     });
@@ -87,14 +108,18 @@ export default function NavBar() {
     };
   }, [user?._id]);
 
-  // ✅ Initial + periodic refresh of unread notifications
+  /* ========================================================
+     ✅ Periodic refresh of notifications
+  ======================================================== */
   useEffect(() => {
     fetchNotificationCount();
     const interval = setInterval(fetchNotificationCount, 15000);
     return () => clearInterval(interval);
   }, []);
 
-  // ✅ Logout function
+  /* ========================================================
+     ✅ Logout
+  ======================================================== */
   const handleLogout = () => {
     localStorage.removeItem("user");
     setUser(null);
@@ -102,7 +127,9 @@ export default function NavBar() {
     toast.success("You have been logged out.");
   };
 
-  // ✅ Navigation items
+  /* ========================================================
+     ✅ Navigation Items
+  ======================================================== */
   const navItems = [
     { icon: <FaHome />, label: "Home", to: "/" },
     { icon: <FaUsers />, label: "My Network", to: "/network" },
@@ -116,6 +143,9 @@ export default function NavBar() {
     },
   ];
 
+  /* ========================================================
+     ✅ Render
+  ======================================================== */
   return (
     <>
       <Toaster position="top-right" reverseOrder={false} />

@@ -2,9 +2,9 @@ import Post from "../models/Post.js";
 import User from "../models/User.js";
 import cloudinary from "../config/cloudinary.js";
 
-/**
- * 📝 Create a new post
- */
+/* =========================================================
+   📝 Create a new post
+========================================================= */
 export const createPost = async (req, res) => {
   try {
     const { content, visibility } = req.body;
@@ -17,7 +17,7 @@ export const createPost = async (req, res) => {
     let uploadId = null;
     let fileType = null;
 
-    // ✅ Upload media to Cloudinary (if exists)
+    // ✅ Upload to Cloudinary (if file exists)
     if (req.file) {
       const fileBase64 = req.file.buffer.toString("base64");
       const dataUri = `data:${req.file.mimetype};base64,${fileBase64}`;
@@ -48,17 +48,17 @@ export const createPost = async (req, res) => {
 
     const populatedPost = await newPost.populate("user", "name avatar headline");
 
-    // ✅ Match frontend structure
-    res.status(201).json({ post: populatedPost });
+    // ✅ Return post directly (not wrapped)
+    res.status(201).json(populatedPost);
   } catch (error) {
     console.error("❌ Error creating post:", error);
     res.status(500).json({ message: "Server error creating post" });
   }
 };
 
-/**
- * 🔍 Get all posts (Feed)
- */
+/* =========================================================
+   🔍 Get all posts (Feed)
+========================================================= */
 export const getAllPosts = async (req, res) => {
   try {
     const posts = await Post.find()
@@ -66,6 +66,7 @@ export const getAllPosts = async (req, res) => {
       .populate("comments.user", "name avatar headline")
       .sort({ createdAt: -1 });
 
+    // ✅ Return array directly
     res.status(200).json(posts);
   } catch (error) {
     console.error("❌ Error fetching posts:", error);
@@ -73,9 +74,9 @@ export const getAllPosts = async (req, res) => {
   }
 };
 
-/**
- * 👤 Get posts by a specific user
- */
+/* =========================================================
+   👤 Get posts by specific user
+========================================================= */
 export const getUserPosts = async (req, res) => {
   try {
     const posts = await Post.find({ user: req.params.userId })
@@ -90,9 +91,9 @@ export const getUserPosts = async (req, res) => {
   }
 };
 
-/**
- * ❤️ Like / Unlike post
- */
+/* =========================================================
+   ❤️ Like / Unlike post
+========================================================= */
 export const likePost = async (req, res) => {
   try {
     const post = await Post.findById(req.params.id);
@@ -121,9 +122,9 @@ export const likePost = async (req, res) => {
   }
 };
 
-/**
- * 💬 Comment on post
- */
+/* =========================================================
+   💬 Comment on post
+========================================================= */
 export const commentOnPost = async (req, res) => {
   try {
     const { text } = req.body;
@@ -139,17 +140,17 @@ export const commentOnPost = async (req, res) => {
       .populate("user", "name avatar headline")
       .populate("comments.user", "name avatar headline");
 
-    // ✅ Match frontend structure
-    res.status(200).json({ post: populatedPost });
+    // ✅ Return post directly
+    res.status(200).json(populatedPost);
   } catch (error) {
     console.error("❌ Comment error:", error);
     res.status(500).json({ message: "Server error adding comment" });
   }
 };
 
-/**
- * ✏️ Update post (text or media)
- */
+/* =========================================================
+   ✏️ Update post
+========================================================= */
 export const updatePost = async (req, res) => {
   try {
     const { id } = req.params;
@@ -169,7 +170,6 @@ export const updatePost = async (req, res) => {
 
     // ✅ Replace media if a new file is uploaded
     if (req.file) {
-      // Delete previous media from Cloudinary
       if (uploadId) {
         await cloudinary.uploader.destroy(uploadId, {
           resource_type: resourceType || "auto",
@@ -202,25 +202,21 @@ export const updatePost = async (req, res) => {
 
     const updated = await post.save();
 
-    // ✅ Populate user info (for feed display)
     const populatedPost = await Post.findById(updated._id)
       .populate("user", "name avatar headline")
       .populate("comments.user", "name avatar headline");
 
-    // ✅ Send back the actual updated post
-    res.status(200).json({
-      message: "Post updated successfully",
-      post: populatedPost,
-    });
+    // ✅ Return post directly
+    res.status(200).json(populatedPost);
   } catch (error) {
     console.error("❌ Update Post Error:", error);
     res.status(500).json({ message: "Server error updating post" });
   }
 };
 
-/**
- * ❌ Delete post
- */
+/* =========================================================
+   ❌ Delete post
+========================================================= */
 export const deletePost = async (req, res) => {
   try {
     const post = await Post.findById(req.params.id);
@@ -245,10 +241,9 @@ export const deletePost = async (req, res) => {
   }
 };
 
-/**
- * 🔁 Share a post
- */
-// ✅ Share another user's post
+/* =========================================================
+   🔁 Share a post
+========================================================= */
 export const sharePost = async (req, res) => {
   try {
     const originalPost = await Post.findById(req.params.id).populate(
@@ -257,7 +252,6 @@ export const sharePost = async (req, res) => {
     );
     if (!originalPost) return res.status(404).json({ message: "Post not found" });
 
-    // Create a new post referencing the shared one
     const sharedPost = await Post.create({
       user: req.user._id,
       content: originalPost.content,
@@ -266,16 +260,13 @@ export const sharePost = async (req, res) => {
       sharedFrom: originalPost._id,
     });
 
-    // Increment share count
     originalPost.shareCount = (originalPost.shareCount || 0) + 1;
     await originalPost.save();
 
     const populatedShared = await sharedPost.populate("user", "name avatar headline");
 
-    res.status(201).json({
-      message: "Post shared successfully",
-      post: populatedShared,
-    });
+    // ✅ Return new shared post directly
+    res.status(201).json(populatedShared);
   } catch (error) {
     console.error("❌ Share Post Error:", error);
     res.status(500).json({ message: "Server error sharing post" });
