@@ -1,6 +1,7 @@
 import React, { useState } from "react";
-import axios from "axios";
 import { useNavigate } from "react-router-dom";
+import API from "../api"; // ✅ uses your axios instance with VITE_API_URL
+import { Loader2 } from "lucide-react";
 
 export default function Register() {
   const [name, setName] = useState("");
@@ -11,26 +12,30 @@ export default function Register() {
 
   const handleSignup = async (e) => {
     e.preventDefault();
+
+    if (!name.trim() || !email.trim() || !password.trim()) {
+      alert("Please fill all fields.");
+      return;
+    }
+
+    if (password.length < 6) {
+      alert("Password must be at least 6 characters long.");
+      return;
+    }
+
     setLoading(true);
 
     try {
-      // ✅ Register user
-      const res = await axios.post("http://localhost:5000/api/auth/register", {
-        name,
-        email,
-        password,
-      });
+      // ✅ Register new user
+      const res = await API.post("/auth/register", { name, email, password });
+      console.log("✅ Registration response:", res.data);
 
-      // ✅ Immediately login user after registration
-      const loginRes = await axios.post("http://localhost:5000/api/auth/login", {
-        email,
-        password,
-      });
+      // ✅ Auto-login immediately
+      const loginRes = await API.post("/auth/login", { email, password });
 
-      // ✅ Save user & token to localStorage
+      // ✅ Save user to localStorage
       localStorage.setItem("user", JSON.stringify(loginRes.data));
 
-      // ✅ Redirect new user to My Network (to connect with others)
       alert("🎉 Account created successfully! Welcome to LinkedIn.");
       navigate("/network");
     } catch (err) {
@@ -42,16 +47,21 @@ export default function Register() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col justify-center items-center bg-[#f3f2ef]">
+    <div className="min-h-screen flex flex-col justify-center items-center bg-[#f3f2ef] px-4">
       {/* LinkedIn Logo */}
       <div className="flex items-center mb-8">
-        <img src="/linkedin.png" alt="LinkedIn" className="w-10 h-10 mr-2" />
+        <img
+          src="/linkedin.png"
+          alt="LinkedIn"
+          className="w-10 h-10 mr-2"
+          onError={(e) => (e.target.style.display = "none")}
+        />
         <h1 className="text-3xl font-semibold text-[#0A66C2]">LinkedIn</h1>
       </div>
 
       {/* Signup Card */}
       <div className="bg-white w-full max-w-md rounded-lg shadow-lg p-8 border border-gray-200">
-        <h2 className="text-2xl font-semibold text-gray-800 mb-2">
+        <h2 className="text-2xl font-semibold text-gray-800 mb-4">
           Make the most of your professional life
         </h2>
 
@@ -84,12 +94,13 @@ export default function Register() {
           <button
             type="submit"
             disabled={loading}
-            className={`w-full py-2 rounded-full text-white font-medium transition ${
+            className={`w-full py-2 rounded-full text-white font-medium flex items-center justify-center gap-2 transition ${
               loading
                 ? "bg-[#0A66C2]/60 cursor-not-allowed"
                 : "bg-[#0A66C2] hover:bg-[#004182]"
             }`}
           >
+            {loading && <Loader2 className="w-4 h-4 animate-spin" />}
             {loading ? "Creating your account..." : "Agree & Join"}
           </button>
         </form>
