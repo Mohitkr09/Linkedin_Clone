@@ -16,30 +16,50 @@ import postRoutes from "./routes/posts.js";
 import connectionRoutes from "./routes/connections.js";
 import messageRoutes from "./routes/messages.js";
 
+// ========================================================
+// ✅ Load Environment Variables
+// ========================================================
 dotenv.config();
+
+console.log("📦 Environment Variables Loaded:");
+console.log({
+  PORT: process.env.PORT,
+  MONGO_URI: process.env.MONGO_URI ? "✅ Present" : "❌ Missing",
+  JWT_SECRET: process.env.JWT_SECRET ? "✅ Present" : "❌ Missing",
+  CLOUDINARY_CLOUD_NAME: process.env.CLOUDINARY_CLOUD_NAME ? "✅ Present" : "❌ Missing",
+});
+
+// ========================================================
+// ✅ Connect to MongoDB
+// ========================================================
 connectDB();
 
 const app = express();
 
-/* ========================================================
-   ✅ BODY PARSER & PAYLOAD SIZE FIX
-======================================================== */
+// ========================================================
+// ✅ BODY PARSER CONFIGURATION
+// ========================================================
 app.use(express.json({ limit: "25mb" }));
 app.use(express.urlencoded({ limit: "25mb", extended: true }));
 
-/* ========================================================
-   ✅ CORS CONFIGURATION (Local + Deployed Frontend)
-======================================================== */
+// ========================================================
+// ✅ CORS CONFIGURATION (Supports Vercel + Localhost)
+// ========================================================
 const allowedOrigins = [
-  "http://localhost:5173",
-  "https://linkedin-clone-11eh.vercel.app", // ✅ Your Vercel frontend
+  "http://localhost:5173",                   // Local dev
+  /\.vercel\.app$/,                          // ✅ Allow any Vercel frontend
+  "https://feisty-heart-production.up.railway.app", // Backend self-origin
 ];
 
 app.use(
   cors({
     origin: function (origin, callback) {
-      if (!origin) return callback(null, true); // Allow mobile/postman requests
-      if (allowedOrigins.includes(origin)) {
+      if (!origin) return callback(null, true); // Allow Postman / Mobile
+      const allowed = allowedOrigins.some((rule) =>
+        rule instanceof RegExp ? rule.test(origin) : rule === origin
+      );
+      if (allowed) {
+        console.log("✅ CORS allowed for:", origin);
         callback(null, true);
       } else {
         console.warn("🚫 Blocked by CORS:", origin);
@@ -52,90 +72,81 @@ app.use(
   })
 );
 
-/* ========================================================
-   ✅ STATIC FILES (Local Upload Fallback)
-======================================================== */
+// ========================================================
+// ✅ DEBUG LOGGER (Shows incoming requests)
+// ========================================================
+app.use((req, res, next) => {
+  console.log(`➡️  ${req.method} ${req.originalUrl}`);
+  next();
+});
+
+// ========================================================
+// ✅ STATIC FILES (for avatars/uploads)
+// ========================================================
 app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 
-/* ========================================================
-   ✅ API ROUTES
-======================================================== */
+// ========================================================
+// ✅ API ROUTES
+// ========================================================
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/posts", postRoutes);
 app.use("/api/connections", connectionRoutes);
 app.use("/api/messages", messageRoutes);
 
-/* ========================================================
-   ✅ HTTP SERVER + SOCKET.IO INITIALIZATION
-======================================================== */
+// Optional: Simple health check route
+app.get("/api/health", (req, res) => res.send("✅ Backend is running fine!"));
+
+// ========================================================
+// ✅ SOCKET.IO INITIALIZATION
+// ========================================================
 const server = http.createServer(app);
 
 const io = new Server(server, {
   cors: {
     origin: [
       "http://localhost:5173",
-      "https://linkedin-clone-11eh.vercel.app",
+      /\.vercel\.app$/, // Allow all vercel domains for socket connections too
     ],
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
   },
 });
 
-/* ========================================================
-   ✅ SOCKET.IO — ONLINE USERS & EVENTS
-======================================================== */
+// ========================================================
+// ✅ SOCKET.IO EVENTS (Messaging + Users)
+// ========================================================
 const onlineUsers = new Map();
 
 io.on("connection", (socket) => {
   console.log("🟢 New socket connected:", socket.id);
 
-  // ✅ Register a connected user
   socket.on("registerUser", (userId) => {
     if (userId) {
       onlineUsers.set(userId, socket.id);
-      console.log(`✅ Registered ${userId} with socket ${socket.id}`);
+      console.log(`✅ Registered user ${userId} with socket ${socket.id}`);
     }
   });
 
-  // ✅ Handle sending messages (real-time + DB save)
   socket.on("sendMessage", async ({ senderId, receiverId, content }) => {
     try {
       if (!senderId || !receiverId || !content) {
-        console.warn("⚠️ Invalid message payload received:", {
-          senderId,
-          receiverId,
-          content,
-        });
+        console.warn("⚠️ Invalid message payload:", { senderId, receiverId, content });
         return;
       }
 
-      console.log("📥 Message received for saving:", {
-        senderId,
-        receiverId,
-        content,
-      });
-
-      const newMessage = await Message.create({
-        sender: senderId,
-        receiver: receiverId,
-        content,
-      });
-
+      const newMessage = await Message.create({ sender: senderId, receiver: receiverId, content });
       const populatedMsg = await newMessage.populate([
         { path: "sender", select: "name avatar" },
         { path: "receiver", select: "name avatar" },
       ]);
 
       const receiverSocket = onlineUsers.get(receiverId);
-      if (receiverSocket) {
-        io.to(receiverSocket).emit("receiveMessage", populatedMsg);
-      }
-
+      if (receiverSocket) io.to(receiverSocket).emit("receiveMessage", populatedMsg);
       socket.emit("receiveMessage", populatedMsg);
 
-      console.log(`📩 Message sent from ${senderId} → ${receiverId}`);
+      console.log(`📤 Message ${senderId} → ${receiverId}`);
     } catch (error) {
-      console.error("❌ Error sending message:", error);
+      console.error("❌ Error in sendMessage:", error);
     }
   });
 
@@ -150,9 +161,9 @@ io.on("connection", (socket) => {
   });
 });
 
-/* ========================================================
-   ✅ SOCKET NOTIFICATION HELPERS
-======================================================== */
+// ========================================================
+// ✅ SOCKET NOTIFICATION HELPERS
+// ========================================================
 export const sendNotification = (userId, notification) => {
   const socketId = onlineUsers.get(userId);
   if (socketId) {
@@ -163,37 +174,24 @@ export const sendNotification = (userId, notification) => {
   }
 };
 
-export const sendNotificationToMany = (userIds, notification) => {
-  userIds.forEach((id) => {
-    const socketId = onlineUsers.get(id);
-    if (socketId) {
-      io.to(socketId).emit("newNotification", notification);
-      console.log(`📢 Broadcasted notification to ${id}`);
-    }
-  });
-};
-
-/* ========================================================
-   ✅ GLOBAL ERROR HANDLERS
-======================================================== */
+// ========================================================
+// ✅ GLOBAL ERROR HANDLERS
+// ========================================================
 process.on("uncaughtException", (err) => {
   console.error("❌ Uncaught Exception:", err);
 });
-
 process.on("unhandledRejection", (err) => {
   console.error("❌ Unhandled Promise Rejection:", err);
 });
-
 io.on("error", (err) => {
   console.error("❌ Socket.IO Error:", err.message);
 });
 
-/* ========================================================
-   ✅ START SERVER
-======================================================== */
-const PORT = process.env.PORT || 5000;
+// ========================================================
+// ✅ START SERVER
+// ========================================================
+const PORT = process.env.PORT || 8080;
 server.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
-  console.log("🌐 CORS allowed for:");
-  console.log(allowedOrigins);
+  console.log("🌐 Allowed Origins (CORS):", allowedOrigins);
 });
