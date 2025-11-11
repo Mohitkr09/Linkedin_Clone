@@ -48,7 +48,7 @@ app.use(express.urlencoded({ limit: "25mb", extended: true }));
 const allowedOrigins = [
   "http://localhost:5173",                   // Local dev
   /\.vercel\.app$/,                          // ✅ Allow any Vercel frontend
-  "https://feisty-heart-production.up.railway.app", // Backend self-origin
+  "https://pacific-dedication-production-dbe8.up.railway.app", // Backend self-origin
 ];
 
 app.use(
