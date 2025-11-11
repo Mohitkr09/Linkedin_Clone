@@ -2,18 +2,22 @@
 import axios from "axios";
 
 const instance = axios.create({
-  // ✅ Ensure no extra /api in .env — handled in code instead
-  baseURL: import.meta.env.VITE_API_URL,
-  withCredentials: false, // Usually false for token-based auth (set true if using cookies)
+  baseURL: import.meta.env.VITE_API_URL || "http://localhost:5000/api",
+  withCredentials: false, // true only if using cookies
 });
 
-// ✅ Add interceptor to attach JWT automatically
+// ✅ Automatically attach JWT from localStorage
 instance.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem("token");
+    try {
+      const user = JSON.parse(localStorage.getItem("user"));
+      const token = user?.token;
 
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+      }
+    } catch (err) {
+      console.warn("⚠️ Error parsing token from localStorage:", err);
     }
 
     // ✅ Ensure proper content type for POST/PUT
@@ -26,14 +30,14 @@ instance.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-// ✅ Optional: handle token expiry (401 global handler)
+// ✅ Optional: Handle global 401 redirects
 instance.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response && error.response.status === 401) {
       console.warn("🔒 Token expired or unauthorized. Redirecting to login...");
-      localStorage.removeItem("token");
-      window.location.href = "/login"; // redirect user automatically
+      localStorage.removeItem("user");
+      window.location.href = "/login";
     }
     return Promise.reject(error);
   }
