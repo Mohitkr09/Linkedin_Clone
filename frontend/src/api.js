@@ -1,7 +1,7 @@
 import axios from "axios";
 
 const API = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || "https://luminous-empathy-production.up.railway.app/api",
+  baseURL: import.meta.env.VITE_API_URL || "https://pacific-dedication-production-dbe8.up.railway.app/api",
 });
 
 // ✅ attach token automatically
