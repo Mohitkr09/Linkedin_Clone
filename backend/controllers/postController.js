@@ -17,7 +17,6 @@ export const createPost = async (req, res) => {
     let uploadId = null;
     let fileType = null;
 
-    // ✅ Upload to Cloudinary (if file exists)
     if (req.file) {
       const fileBase64 = req.file.buffer.toString("base64");
       const dataUri = `data:${req.file.mimetype};base64,${fileBase64}`;
@@ -48,7 +47,6 @@ export const createPost = async (req, res) => {
 
     const populatedPost = await newPost.populate("user", "name avatar headline");
 
-    // ✅ Return post directly (not wrapped)
     res.status(201).json(populatedPost);
   } catch (error) {
     console.error("❌ Error creating post:", error);
@@ -57,16 +55,18 @@ export const createPost = async (req, res) => {
 };
 
 /* =========================================================
-   🔍 Get all posts (Feed)
+   🔍 Get all posts (Feed) - ONLY VALID USERS
 ========================================================= */
 export const getAllPosts = async (req, res) => {
   try {
-    const posts = await Post.find()
+    let posts = await Post.find()
       .populate("user", "name avatar headline")
       .populate("comments.user", "name avatar headline")
       .sort({ createdAt: -1 });
 
-    // ✅ Return array directly
+    // 🔥 REMOVE POSTS WHOSE USER NO LONGER EXISTS
+    posts = posts.filter((p) => p.user !== null);
+
     res.status(200).json(posts);
   } catch (error) {
     console.error("❌ Error fetching posts:", error);
@@ -75,7 +75,7 @@ export const getAllPosts = async (req, res) => {
 };
 
 /* =========================================================
-   👤 Get posts by specific user
+   👤 Get posts from a specific user
 ========================================================= */
 export const getUserPosts = async (req, res) => {
   try {
@@ -92,7 +92,7 @@ export const getUserPosts = async (req, res) => {
 };
 
 /* =========================================================
-   ❤️ Like / Unlike post
+   ❤️ Like / Unlike Post
 ========================================================= */
 export const likePost = async (req, res) => {
   try {
@@ -100,18 +100,16 @@ export const likePost = async (req, res) => {
     if (!post) return res.status(404).json({ message: "Post not found" });
 
     const userId = req.user._id;
-    const hasLiked = post.likes.includes(userId);
+    const liked = post.likes.includes(userId);
 
-    if (hasLiked) {
-      post.likes = post.likes.filter((id) => id.toString() !== userId.toString());
-    } else {
-      post.likes.push(userId);
-    }
+    post.likes = liked
+      ? post.likes.filter((id) => id.toString() !== userId.toString())
+      : [...post.likes, userId];
 
     await post.save();
 
     res.status(200).json({
-      message: hasLiked ? "Post unliked" : "Post liked",
+      message: liked ? "Post unliked" : "Post liked",
       postId: post._id,
       likes: post.likes,
       likeCount: post.likes.length,
@@ -123,7 +121,7 @@ export const likePost = async (req, res) => {
 };
 
 /* =========================================================
-   💬 Comment on post
+   💬 Comment on Post
 ========================================================= */
 export const commentOnPost = async (req, res) => {
   try {
@@ -140,7 +138,6 @@ export const commentOnPost = async (req, res) => {
       .populate("user", "name avatar headline")
       .populate("comments.user", "name avatar headline");
 
-    // ✅ Return post directly
     res.status(200).json(populatedPost);
   } catch (error) {
     console.error("❌ Comment error:", error);
@@ -149,7 +146,7 @@ export const commentOnPost = async (req, res) => {
 };
 
 /* =========================================================
-   ✏️ Update post
+   ✏️ Edit Post
 ========================================================= */
 export const updatePost = async (req, res) => {
   try {
@@ -159,21 +156,17 @@ export const updatePost = async (req, res) => {
     const post = await Post.findById(id);
     if (!post) return res.status(404).json({ message: "Post not found" });
 
-    // Only owner can edit
     if (post.user.toString() !== req.user._id.toString()) {
-      return res.status(403).json({ message: "Unauthorized to edit this post" });
+      return res.status(403).json({ message: "Unauthorized" });
     }
 
     let uploadUrl = post.image || post.video;
     let uploadId = post.imageId || post.videoId;
-    let resourceType = post.image ? "image" : post.video ? "video" : null;
+    let type = post.image ? "image" : post.video ? "video" : null;
 
-    // ✅ Replace media if a new file is uploaded
     if (req.file) {
       if (uploadId) {
-        await cloudinary.uploader.destroy(uploadId, {
-          resource_type: resourceType || "auto",
-        });
+        await cloudinary.uploader.destroy(uploadId, { resource_type: type || "auto" });
       }
 
       const fileBase64 = req.file.buffer.toString("base64");
@@ -182,32 +175,26 @@ export const updatePost = async (req, res) => {
       const uploadRes = await cloudinary.uploader.upload(dataUri, {
         folder: "linkedin_clone/posts",
         resource_type: "auto",
-        transformation: [
-          { quality: "auto", fetch_format: "auto" },
-          { width: 1080, crop: "limit" },
-        ],
       });
 
       uploadUrl = uploadRes.secure_url;
       uploadId = uploadRes.public_id;
-      resourceType = req.file.mimetype.startsWith("video") ? "video" : "image";
+      type = req.file.mimetype.startsWith("video") ? "video" : "image";
     }
 
-    // ✅ Update fields
-    post.content = content?.trim() || post.content;
-    post.image = resourceType === "image" ? uploadUrl : null;
-    post.video = resourceType === "video" ? uploadUrl : null;
-    post.imageId = resourceType === "image" ? uploadId : null;
-    post.videoId = resourceType === "video" ? uploadId : null;
+    post.content = content.trim() || post.content;
+    post.image = type === "image" ? uploadUrl : null;
+    post.video = type === "video" ? uploadUrl : null;
+    post.imageId = type === "image" ? uploadId : null;
+    post.videoId = type === "video" ? uploadId : null;
 
-    const updated = await post.save();
+    await post.save();
 
-    const populatedPost = await Post.findById(updated._id)
+    const saved = await Post.findById(post._id)
       .populate("user", "name avatar headline")
       .populate("comments.user", "name avatar headline");
 
-    // ✅ Return post directly
-    res.status(200).json(populatedPost);
+    res.status(200).json(saved);
   } catch (error) {
     console.error("❌ Update Post Error:", error);
     res.status(500).json({ message: "Server error updating post" });
@@ -215,7 +202,7 @@ export const updatePost = async (req, res) => {
 };
 
 /* =========================================================
-   ❌ Delete post
+   ❌ Delete Post
 ========================================================= */
 export const deletePost = async (req, res) => {
   try {
@@ -223,18 +210,18 @@ export const deletePost = async (req, res) => {
     if (!post) return res.status(404).json({ message: "Post not found" });
 
     if (post.user.toString() !== req.user._id.toString()) {
-      return res.status(403).json({ message: "Unauthorized to delete this post" });
+      return res.status(403).json({ message: "Unauthorized" });
     }
 
-    // ✅ Delete media if exists
     if (post.imageId)
       await cloudinary.uploader.destroy(post.imageId, { resource_type: "image" });
+
     if (post.videoId)
       await cloudinary.uploader.destroy(post.videoId, { resource_type: "video" });
 
     await post.deleteOne();
 
-    res.status(200).json({ message: "Post deleted successfully", postId: post._id });
+    res.status(200).json({ message: "Post deleted", postId: post._id });
   } catch (error) {
     console.error("❌ Delete Post Error:", error);
     res.status(500).json({ message: "Server error deleting post" });
@@ -242,31 +229,31 @@ export const deletePost = async (req, res) => {
 };
 
 /* =========================================================
-   🔁 Share a post
+   🔁 Share Post
 ========================================================= */
 export const sharePost = async (req, res) => {
   try {
-    const originalPost = await Post.findById(req.params.id).populate(
+    const original = await Post.findById(req.params.id).populate(
       "user",
       "name avatar headline"
     );
-    if (!originalPost) return res.status(404).json({ message: "Post not found" });
 
-    const sharedPost = await Post.create({
+    if (!original) return res.status(404).json({ message: "Post not found" });
+
+    const shared = await Post.create({
       user: req.user._id,
-      content: originalPost.content,
-      image: originalPost.image,
-      video: originalPost.video,
-      sharedFrom: originalPost._id,
+      content: original.content,
+      image: original.image,
+      video: original.video,
+      sharedFrom: original._id,
     });
 
-    originalPost.shareCount = (originalPost.shareCount || 0) + 1;
-    await originalPost.save();
+    original.shareCount = (original.shareCount || 0) + 1;
+    await original.save();
 
-    const populatedShared = await sharedPost.populate("user", "name avatar headline");
+    const populated = await shared.populate("user", "name avatar headline");
 
-    // ✅ Return new shared post directly
-    res.status(201).json(populatedShared);
+    res.status(201).json(populated);
   } catch (error) {
     console.error("❌ Share Post Error:", error);
     res.status(500).json({ message: "Server error sharing post" });

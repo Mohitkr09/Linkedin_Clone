@@ -16,23 +16,30 @@ const connectionRequestSchema = new mongoose.Schema({
 const userSchema = new mongoose.Schema(
   {
     name: { type: String, required: true },
-    email: { type: String, unique: true, required: true },
+    email: { type: String, required: true, unique: true },
 
-    // This must match your auth controller:
+    // 🔐 Matches your auth controller
     passwordHash: { type: String, required: true },
 
-    avatar: String,
-    headline: String,
-    location: String,
-    about: String,
+    avatar: { type: String, default: null },
+    headline: { type: String, default: "" },   // 🆕 ensures no undefined
+    location: { type: String, default: "" },
+    
+    // 🆕 Added this field (your UI expects it!)
+    bio: { type: String, default: "" },
+
+    // 'about' remains separate for detailed profile section
+    about: { type: String, default: "" },
 
     followers: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
     following: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
     connections: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
 
-    connectionRequests: [connectionRequestSchema], // 👈 FIXED
+    // pending requests
+    connectionRequests: [connectionRequestSchema],
 
-    notifications: [notificationSchema], // 👈 FIXED
+    // notifications system
+    notifications: [notificationSchema],
   },
   { timestamps: true }
 );

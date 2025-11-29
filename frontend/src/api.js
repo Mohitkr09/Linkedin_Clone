@@ -1,26 +1,23 @@
 // src/api/axios.js
 import axios from "axios";
 
+const BASE_URL = (import.meta.env.VITE_BACKEND_URL || "http://localhost:5000").replace(/\/$/, "");
+
 const instance = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || "http://localhost:5000/api",
-  withCredentials: false, // true only if using cookies
+  baseURL: `${BASE_URL}/api`, // ALWAYS ends with /api
+  withCredentials: false,
 });
 
-// ✅ Automatically attach JWT from localStorage
+// 🔐 Attach token
 instance.interceptors.request.use(
   (config) => {
-    try {
-      const user = JSON.parse(localStorage.getItem("user"));
-      const token = user?.token;
+    const user = JSON.parse(localStorage.getItem("user"));
+    const token = user?.token;
 
-      if (token) {
-        config.headers.Authorization = `Bearer ${token}`;
-      }
-    } catch (err) {
-      console.warn("⚠️ Error parsing token from localStorage:", err);
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
     }
 
-    // ✅ Ensure proper content type for POST/PUT
     if (!config.headers["Content-Type"]) {
       config.headers["Content-Type"] = "application/json";
     }
@@ -30,16 +27,15 @@ instance.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-// ✅ Optional: Handle global 401 redirects
+// 🚨 Auto logout on 401
 instance.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    if (error.response && error.response.status === 401) {
-      console.warn("🔒 Token expired or unauthorized. Redirecting to login...");
+  (res) => res,
+  (err) => {
+    if (err.response?.status === 401) {
       localStorage.removeItem("user");
       window.location.href = "/login";
     }
-    return Promise.reject(error);
+    return Promise.reject(err);
   }
 );
 

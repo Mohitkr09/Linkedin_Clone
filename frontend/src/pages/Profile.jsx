@@ -7,39 +7,47 @@ export default function Profile() {
   const { id } = useParams();
   const navigate = useNavigate();
 
+  const loggedUser = JSON.parse(localStorage.getItem("user"));
+  const token = loggedUser?.token;
+
+  // 🟢 Determine which profile to load
+  const finalUserId =
+    id && id !== "me"
+      ? id
+      : loggedUser && loggedUser._id
+      ? loggedUser._id
+      : null;
+
+  const API_URL = import.meta.env.VITE_BACKEND_URL;
+
   const [user, setUser] = useState(null);
-  const [isEditingBio, setIsEditingBio] = useState(false);
-  const [isEditingHeadline, setIsEditingHeadline] = useState(false);
-  const [isEditingAbout, setIsEditingAbout] = useState(false);
   const [bio, setBio] = useState("");
   const [headline, setHeadline] = useState("");
   const [about, setAbout] = useState("");
-  const [uploading, setUploading] = useState(false);
+
+  const [editBio, setEditBio] = useState(false);
+  const [editHeadline, setEditHeadline] = useState(false);
+  const [editAbout, setEditAbout] = useState(false);
+
   const [avatarPreview, setAvatarPreview] = useState(null);
+  const [uploading, setUploading] = useState(false);
 
-  const loggedUser = JSON.parse(localStorage.getItem("user"));
-  const uid = !id || id === "me" ? loggedUser?._id : id;
-
-  // ✅ Redirect if not logged in
+  /* =======================================================
+     🛑 Redirect if not logged in
+  ======================================================= */
   useEffect(() => {
-    if (!loggedUser) {
-      alert("Please log in to view your profile.");
-      navigate("/login");
-    }
+    if (!loggedUser) navigate("/login");
   }, []);
 
-  // ✅ Fetch user profile
-  const fetchUser = async () => {
+  /* =======================================================
+     📌 Fetch User Profile
+  ======================================================= */
+  const fetchProfile = async () => {
     try {
-      if (!loggedUser?.token) return;
+      if (!token || !finalUserId) return; // 🛑 No request until ID exists
 
-      const target =
-        !id || id === "me"
-          ? `/api/users/${loggedUser._id}`
-          : `/api/users/${uid}`;
-
-      const res = await axios.get(`http://localhost:5000${target}`, {
-        headers: { Authorization: `Bearer ${loggedUser?.token}` },
+      const res = await axios.get(`${API_URL}/api/users/${finalUserId}`, {
+        headers: { Authorization: `Bearer ${token}` },
       });
 
       setUser(res.data);
@@ -48,109 +56,92 @@ export default function Profile() {
       setAbout(res.data.about || "");
       setAvatarPreview(res.data.avatar || null);
     } catch (err) {
-      console.error("❌ Error fetching profile:", err);
-      alert("Failed to load profile.");
+      console.error("❌ Profile fetch failed:", err);
+      navigate("/");
     }
   };
 
   useEffect(() => {
-    fetchUser();
-  }, [id]);
+    if (!finalUserId) return; // avoids undefined
+    fetchProfile();
+  }, [id, finalUserId]);
 
-  // ✅ Compress + Upload Avatar
+  /* =======================================================
+     📸 Upload Avatar
+  ======================================================= */
   const handleAvatarChange = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
-
-    if (!file.type.startsWith("image/")) {
-      alert("Please select a valid image file.");
-      return;
-    }
+    if (!file.type.startsWith("image/")) return alert("Select a valid image");
 
     try {
-      // ✅ Instant Preview
-      const previewUrl = URL.createObjectURL(file);
-      setAvatarPreview(previewUrl);
       setUploading(true);
+      setAvatarPreview(URL.createObjectURL(file));
 
-      // ✅ Compress Image
-      const options = {
+      const compressed = await imageCompression(file, {
         maxSizeMB: 1,
         maxWidthOrHeight: 600,
-        useWebWorker: true,
-      };
-      const compressedFile = await imageCompression(file, options);
+      });
 
-      // ✅ Upload to backend
-      const formData = new FormData();
-      formData.append("avatar", compressedFile);
+      const fd = new FormData();
+      fd.append("avatar", compressed);
 
-      const res = await axios.put(
-        "http://localhost:5000/api/users/avatar",
-        formData,
-        {
-          headers: {
-            "Content-Type": "multipart/form-data",
-            Authorization: `Bearer ${loggedUser?.token}`,
-          },
-        }
-      );
+      const res = await axios.put(`${API_URL}/api/users/avatar`, fd, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "multipart/form-data",
+        },
+      });
 
-      const updatedAvatar = res.data.avatar;
+      const newAvatar = res.data.avatar;
 
-      // ✅ Update local state + storage + navbar
-      setUser((prev) => ({ ...prev, avatar: updatedAvatar }));
+      setUser((u) => ({ ...u, avatar: newAvatar }));
+
+      // update localStorage
       localStorage.setItem(
         "user",
-        JSON.stringify({ ...loggedUser, avatar: updatedAvatar })
+        JSON.stringify({ ...loggedUser, avatar: newAvatar })
       );
-      window.dispatchEvent(new Event("storage")); // 🔄 triggers navbar re-render
 
-      alert("✅ Profile photo updated successfully!");
-    } catch (err) {
-      console.error("❌ Avatar upload failed:", err.response?.data || err);
-      alert(err.response?.data?.message || "Failed to upload profile photo.");
+      window.dispatchEvent(new Event("storage"));
     } finally {
       setUploading(false);
     }
   };
 
-  // ✅ Save Bio / Headline / About
-  const handleSaveProfile = async (field) => {
-    try {
-      const payload =
-        field === "bio"
-          ? { bio }
-          : field === "headline"
-          ? { headline }
-          : field === "about"
-          ? { about }
-          : {};
+  /* =======================================================
+     ✏ Update Bio / Headline / About
+  ======================================================= */
+  const saveField = async (field) => {
+    const body =
+      field === "bio"
+        ? { bio }
+        : field === "headline"
+        ? { headline }
+        : { about };
 
-      const res = await axios.put(
-        "http://localhost:5000/api/users/update",
-        payload,
-        {
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${loggedUser?.token}`,
-          },
-        }
-      );
+    try {
+      const res = await axios.put(`${API_URL}/api/users/update`, body, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
 
       setUser((prev) => ({ ...prev, ...res.data }));
-      if (field === "bio") setIsEditingBio(false);
-      if (field === "headline") setIsEditingHeadline(false);
-      if (field === "about") setIsEditingAbout(false);
+
+      if (field === "bio") setEditBio(false);
+      if (field === "headline") setEditHeadline(false);
+      if (field === "about") setEditAbout(false);
     } catch (err) {
-      console.error("❌ Failed to update profile:", err);
-      alert("Error updating profile. Try again.");
+      console.error("❌ Update failed", err);
+      alert("Update failed");
     }
   };
 
+  /* =======================================================
+     ⏳ Loading State
+  ======================================================= */
   if (!user)
     return (
-      <div className="flex justify-center items-center h-screen bg-gray-50">
+      <div className="flex justify-center items-center h-screen">
         <p className="text-gray-600 text-lg">Loading profile...</p>
       </div>
     );
@@ -158,203 +149,207 @@ export default function Profile() {
   const fallbackAvatar =
     "https://cdn-icons-png.flaticon.com/512/3135/3135715.png";
 
+  /* =======================================================
+     🎨 PAGE UI
+  ======================================================= */
   return (
-    <div className="bg-gray-100 min-h-screen flex flex-col items-center py-8 px-4">
-      {/* Profile Card */}
-      <div className="w-full max-w-3xl bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-        {/* Banner */}
-        <div className="h-40 bg-gradient-to-r from-[#0A66C2] to-[#004182] relative">
-          <div className="absolute -bottom-14 left-8">
-            <label className="relative cursor-pointer group">
-              <img
-                src={avatarPreview || user.avatar || fallbackAvatar}
-                alt={user.name || "User Avatar"}
-                className="w-28 h-28 rounded-full border-4 border-white object-cover shadow-md group-hover:opacity-90 transition"
-              />
-              {loggedUser?._id === user._id && (
-                <>
-                  {uploading ? (
-                    <div className="absolute inset-0 flex justify-center items-center bg-black bg-opacity-40 rounded-full">
-                      <span className="text-white text-xs font-medium">
-                        Uploading...
-                      </span>
-                    </div>
-                  ) : (
-                    <input
-                      type="file"
-                      accept="image/*"
-                      className="absolute inset-0 opacity-0 cursor-pointer"
-                      onChange={handleAvatarChange}
-                    />
-                  )}
-                </>
-              )}
-            </label>
-          </div>
-        </div>
+    <div className="bg-gray-100 min-h-screen flex justify-center py-8 px-4">
+      <div className="max-w-3xl w-full">
 
-        {/* User Info */}
-        <div className="pt-20 pb-8 px-8">
-          <h2 className="text-2xl font-bold text-gray-900">{user.name}</h2>
-
-          {/* Headline */}
-          <EditableField
-            label="headline"
-            value={headline}
-            originalValue={user.headline}
-            isEditing={isEditingHeadline}
-            setIsEditing={setIsEditingHeadline}
-            onSave={() => handleSaveProfile("headline")}
-            onChange={setHeadline}
-            placeholder="Add your professional headline..."
-          />
-
-          {/* Bio */}
-          <EditableField
-            label="bio"
-            value={bio}
-            originalValue={user.bio}
-            isEditing={isEditingBio}
-            setIsEditing={setIsEditingBio}
-            onSave={() => handleSaveProfile("bio")}
-            onChange={setBio}
-            placeholder="Write something about yourself..."
-            multiline
-          />
-
-          {/* Followers */}
-          <div className="flex gap-8 mt-6 text-sm text-gray-600 border-t border-gray-200 pt-4">
-            <div>
-              <span className="font-semibold text-gray-900">
-                {user.followers?.length || 0}
-              </span>{" "}
-              followers
-            </div>
-            <div>
-              <span className="font-semibold text-gray-900">
-                {user.following?.length || 0}
-              </span>{" "}
-              following
+        {/* PROFILE CARD */}
+        <div className="bg-white rounded-2xl shadow border overflow-hidden">
+          <div className="h-40 bg-gradient-to-r from-[#0A66C2] to-[#004182] relative">
+            <div className="absolute -bottom-14 left-8">
+              <label className="relative">
+                <img
+                  src={avatarPreview || user.avatar || fallbackAvatar}
+                  className="w-28 h-28 rounded-full border-4 border-white shadow"
+                />
+                {(loggedUser?._id === user._id) && (
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleAvatarChange}
+                    disabled={uploading}
+                    className="absolute inset-0 opacity-0 cursor-pointer"
+                  />
+                )}
+              </label>
             </div>
           </div>
-        </div>
-      </div>
 
-      {/* ✅ About Section */}
-      <div className="w-full max-w-3xl bg-white rounded-2xl shadow-sm border border-gray-200 mt-6 p-6">
-        <div className="flex justify-between items-start">
-          <h3 className="text-lg font-semibold text-gray-900">About</h3>
-          {loggedUser?._id === user._id && !isEditingAbout && (
-            <button
-              onClick={() => setIsEditingAbout(true)}
-              className="text-[#0A66C2] text-sm hover:underline"
-            >
-              Edit
-            </button>
-          )}
-        </div>
+          <div className="pt-20 pb-8 px-8">
+            <h2 className="text-2xl font-bold">{user.name}</h2>
 
-        {isEditingAbout ? (
-          <div className="mt-3">
-            <textarea
-              value={about}
-              onChange={(e) => setAbout(e.target.value)}
-              rows={4}
-              className="w-full border border-gray-300 rounded-md p-2 text-sm focus:ring-[#0A66C2]"
-              placeholder="Add a detailed description about yourself..."
+            {/* HEADLINE */}
+            <Field
+              label="Headline"
+              value={headline}
+              original={user.headline}
+              editing={editHeadline}
+              setEditing={setEditHeadline}
+              save={() => saveField("headline")}
+              setValue={setHeadline}
             />
-            <div className="mt-2 flex gap-3">
-              <button
-                onClick={() => handleSaveProfile("about")}
-                className="px-4 py-1.5 bg-[#0A66C2] text-white text-sm rounded-full hover:bg-[#004182] transition"
-              >
-                Save
-              </button>
-              <button
-                onClick={() => {
-                  setAbout(user.about || "");
-                  setIsEditingAbout(false);
-                }}
-                className="px-4 py-1.5 border border-gray-400 text-sm rounded-full hover:bg-gray-100 transition"
-              >
-                Cancel
-              </button>
-            </div>
+
+            {/* BIO */}
+            <Field
+              label="Bio"
+              value={bio}
+              original={user.bio}
+              editing={editBio}
+              setEditing={setEditBio}
+              save={() => saveField("bio")}
+              setValue={setBio}
+              textarea
+            />
+
+            {/* STATS */}
+            <Stats followers={user.followers} following={user.following} />
           </div>
-        ) : (
-          <p className="text-gray-700 text-sm leading-relaxed mt-3 whitespace-pre-wrap">
-            {user.about ||
-              "This user hasn’t added an About section yet. Once they do, it’ll appear here."}
-          </p>
-        )}
+        </div>
+
+        {/* ABOUT SECTION */}
+        <About
+          about={about}
+          original={user.about}
+          setAbout={setAbout}
+          editing={editAbout}
+          setEditing={setEditAbout}
+          save={() => saveField("about")}
+          isOwner={loggedUser?._id === user._id}
+        />
       </div>
     </div>
   );
 }
 
-// ✅ Small reusable editable field component
-function EditableField({
+/* =======================================================
+   🔧 FIELD COMPONENT
+======================================================= */
+function Field({
   label,
   value,
-  originalValue,
-  isEditing,
-  setIsEditing,
-  onSave,
-  onChange,
-  placeholder,
-  multiline = false,
+  original,
+  editing,
+  setEditing,
+  save,
+  setValue,
+  textarea,
 }) {
   return (
     <div className="mt-4">
-      {isEditing ? (
-        <div>
-          {multiline ? (
+      {editing ? (
+        <>
+          {textarea ? (
             <textarea
               value={value}
-              onChange={(e) => onChange(e.target.value)}
-              rows={3}
-              className="w-full border border-gray-300 rounded-md p-2 text-sm focus:ring-[#0A66C2]"
-              placeholder={placeholder}
+              onChange={(e) => setValue(e.target.value)}
+              className="w-full border p-2 rounded"
             />
           ) : (
             <input
-              type="text"
               value={value}
-              onChange={(e) => onChange(e.target.value)}
-              className="w-full border border-gray-300 rounded-md p-2 text-sm focus:ring-[#0A66C2]"
-              placeholder={placeholder}
+              onChange={(e) => setValue(e.target.value)}
+              className="w-full border p-2 rounded"
             />
           )}
-          <div className="mt-2 flex gap-3">
+
+          <div className="flex gap-3 mt-2">
             <button
-              onClick={onSave}
-              className="px-4 py-1.5 bg-[#0A66C2] text-white text-sm rounded-full hover:bg-[#004182] transition"
+              onClick={save}
+              className="px-4 py-1 bg-[#0A66C2] text-white rounded-full"
             >
               Save
             </button>
             <button
               onClick={() => {
-                onChange(originalValue || "");
-                setIsEditing(false);
+                setValue(original || "");
+                setEditing(false);
               }}
-              className="px-4 py-1.5 border border-gray-400 text-sm rounded-full hover:bg-gray-100 transition"
+              className="px-4 py-1 border rounded-full"
             >
               Cancel
             </button>
           </div>
-        </div>
+        </>
       ) : (
-        <div className="flex items-start justify-between mt-1">
-          <p className="text-gray-700 text-sm whitespace-pre-wrap">
-            {originalValue || `No ${label} provided`}
-          </p>
+        <div className="flex justify-between">
+          <p className="text-gray-700">{original || `No ${label} added`}</p>
           <button
-            onClick={() => setIsEditing(true)}
-            className="text-[#0A66C2] text-sm hover:underline"
+            onClick={() => setEditing(true)}
+            className="text-[#0A66C2] text-sm"
           >
             Edit
           </button>
         </div>
+      )}
+    </div>
+  );
+}
+
+/* =======================================================
+   📊 FOLLOWERS / FOLLOWING
+======================================================= */
+function Stats({ followers = [], following = [] }) {
+  return (
+    <div className="flex gap-8 mt-6 border-t pt-4 text-sm">
+      <p>
+        <b>{followers.length}</b> followers
+      </p>
+      <p>
+        <b>{following.length}</b> following
+      </p>
+    </div>
+  );
+}
+
+/* =======================================================
+   📝 ABOUT SECTION
+======================================================= */
+function About({ about, original, setAbout, editing, setEditing, save, isOwner }) {
+  return (
+    <div className="bg-white rounded-2xl shadow border mt-6 p-6 max-w-3xl w-full">
+      <div className="flex justify-between">
+        <h3 className="text-lg font-semibold">About</h3>
+
+        {isOwner && !editing && (
+          <button className="text-[#0A66C2]" onClick={() => setEditing(true)}>
+            Edit
+          </button>
+        )}
+      </div>
+
+      {editing ? (
+        <>
+          <textarea
+            className="w-full border rounded p-2 mt-3"
+            rows={4}
+            value={about}
+            onChange={(e) => setAbout(e.target.value)}
+          />
+          <div className="flex gap-4 mt-2">
+            <button
+              onClick={save}
+              className="px-4 py-1 bg-[#0A66C2] text-white rounded-full"
+            >
+              Save
+            </button>
+            <button
+              onClick={() => {
+                setAbout(original || "");
+                setEditing(false);
+              }}
+              className="px-4 py-1 border rounded-full"
+            >
+              Cancel
+            </button>
+          </div>
+        </>
+      ) : (
+        <p className="text-gray-700 mt-3">
+          {original || "No About section added"}
+        </p>
       )}
     </div>
   );
