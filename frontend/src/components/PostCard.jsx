@@ -1,3 +1,4 @@
+// src/components/PostCard.jsx
 import { useState } from "react";
 import API from "../api";
 import {
@@ -9,7 +10,6 @@ import {
   Send,
   Share2,
   Link2,
-  ExternalLink,
 } from "lucide-react";
 import EditPostModal from "./EditPostModal";
 
@@ -23,190 +23,146 @@ const PostCard = ({ post, currentUser, onDelete, onEdit, onShare }) => {
   const [commenting, setCommenting] = useState(false);
   const [showComments, setShowComments] = useState(false);
   const [editingPost, setEditingPost] = useState(null);
-  const [sharingMenu, setSharingMenu] = useState(false);
-  const [sharing, setSharing] = useState(false);
+
+  const [shareMenuOpen, setShareMenuOpen] = useState(false);
   const [shareCount, setShareCount] = useState(post.shareCount || 0);
 
-  const appBaseUrl = window.location.origin;
-  const postLink = `${appBaseUrl}/post/${localPost._id}`;
+  const postUrl = `${window.location.origin}/post/${localPost._id}`;
 
   /* ======================================================
-      👍 LIKE / UNLIKE
+     👤 OWNER CHECK — supports both populated user & ID
+  ====================================================== */
+  const isOwner =
+    String(localPost.user?._id || localPost.user) === String(currentUser?._id);
+
+  /* ======================================================
+     👍 LIKE / UNLIKE
   ====================================================== */
   const handleLike = async () => {
     try {
       await API.put(`/posts/${localPost._id}/like`);
-      setLiked((prev) => !prev);
+      setLiked(!liked);
       setLikes((prev) => (liked ? prev - 1 : prev + 1));
-    } catch (error) {
-      console.error("❌ Like error:", error.response?.data || error);
+    } catch (err) {
+      console.error("❌ Like failed:", err);
     }
   };
 
   /* ======================================================
-      🗑 DELETE POST (ONLY OWNER)
+     🗑 DELETE POST
   ====================================================== */
   const handleDelete = async () => {
-    if (!window.confirm("Are you sure you want to delete this post?")) return;
+    if (!confirm("Are you sure you want to delete this post?")) return;
 
     try {
       await API.delete(`/posts/${localPost._id}`);
-      onDelete?.(localPost._id);
-    } catch (error) {
-      console.error("❌ Delete error:", error);
+      onDelete?.(localPost._id); // Remove from feed
+    } catch (err) {
+      console.error("❌ Delete failed:", err);
       alert("Failed to delete post.");
     }
   };
 
   /* ======================================================
-      💬 COMMENT ON POST
+     💬 ADD COMMENT
   ====================================================== */
   const handleComment = async () => {
     if (!commentText.trim()) return;
-    setCommenting(true);
 
     try {
+      setCommenting(true);
       const res = await API.post(`/posts/${localPost._id}/comment`, {
         text: commentText,
       });
 
-      if (res.data?.post) {
-        setComments(res.data.post.comments);
-        setLocalPost(res.data.post);
+      if (res.data?.comments) {
+        setComments(res.data.comments);
+        setLocalPost((p) => ({ ...p, comments: res.data.comments }));
       }
 
       setCommentText("");
       setShowComments(true);
     } catch (err) {
-      console.error("❌ Comment error:", err.response?.data || err);
-      alert(err.response?.data?.message || "Error posting comment.");
+      console.error("❌ Comment failed:", err);
     } finally {
       setCommenting(false);
     }
   };
 
   /* ======================================================
-      ✏️ EDIT POST
+     ✏️ EDIT POST (MODAL RETURN HANDLING)
   ====================================================== */
   const handleEditSave = (updatedPost) => {
-    if (updatedPost) {
-      setLocalPost(updatedPost);
-      onEdit?.(updatedPost);
-    }
+    setLocalPost(updatedPost);
+    onEdit?.(updatedPost); // Inform parent feed
     setEditingPost(null);
   };
 
   /* ======================================================
-      🔁 INTERNAL SHARE
+     🔁 SHARE INSIDE APP
   ====================================================== */
   const handleInternalShare = async () => {
-    if (sharing) return;
-    setSharing(true);
-
     try {
       const res = await API.post(`/posts/${localPost._id}/share`);
-      if (res.data?.post) {
-        setShareCount((prev) => prev + 1);
-        onShare?.(res.data);
-        alert("✅ Post shared successfully!");
-      }
-    } catch (error) {
-      console.error("❌ Share error:", error.response?.data || error);
-      alert("Failed to share post.");
+      setShareCount((prev) => prev + 1);
+      onShare?.(res.data);
+    } catch (err) {
+      console.error("❌ Share failed:", err);
     } finally {
-      setSharing(false);
-      setSharingMenu(false);
+      setShareMenuOpen(false);
     }
   };
 
   /* ======================================================
-      🔗 COPY LINK
+     🔗 COPY LINK
   ====================================================== */
-  const handleCopyLink = async () => {
-    try {
-      await navigator.clipboard.writeText(postLink);
-      alert("🔗 Link copied!");
-    } catch {
-      alert("Failed to copy link.");
-    }
+  const copyLink = async () => {
+    await navigator.clipboard.writeText(postUrl);
+    alert("🔗 Link copied");
+    setShareMenuOpen(false);
   };
-
-  /* ======================================================
-      📱 NATIVE / SYSTEM SHARE
-  ====================================================== */
-  const handleNativeShare = async () => {
-    if (navigator.share) {
-      try {
-        await navigator.share({
-          title: localPost.user?.name || "Post",
-          text: localPost.content || "",
-          url: postLink,
-        });
-      } catch (err) {
-        console.warn("Share canceled:", err);
-      }
-    } else {
-      setSharingMenu(true);
-    }
-  };
-
-  /* ======================================================
-      🔒 OWNER VALIDATION FIX
-      Works for both populated user object & simple ID
-  ====================================================== */
-  const isOwner =
-    String(localPost.user?._id || localPost.user) ===
-    String(currentUser?._id);
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border hover:shadow-md transition overflow-hidden">
+    <div className="bg-white rounded-xl border shadow-sm hover:shadow-md transition">
       {/* HEADER */}
-      <div className="flex items-start justify-between p-4 relative">
-        <div className="flex items-center space-x-3">
+      <div className="p-4 flex justify-between">
+        <div className="flex gap-3">
           <img
             src={localPost.user?.avatar || "/default-avatar.png"}
-            alt="avatar"
             className="w-10 h-10 rounded-full object-cover"
           />
-
           <div>
-            <h3 className="font-semibold text-gray-900 text-sm flex items-center">
-              {localPost.user?.name}
-              {isOwner && (
-                <span className="text-gray-500 text-xs ml-1">(You)</span>
-              )}
-            </h3>
-            <p className="text-gray-500 text-xs">
+            <p className="font-semibold">{localPost.user?.name}</p>
+            <p className="text-xs text-gray-500">
               {localPost.user?.headline || "Member"}
             </p>
           </div>
         </div>
 
-        {/* OPTIONS MENU (ONLY OWNER) */}
         {isOwner && (
           <div className="relative">
             <button
-              onClick={() => setMenuOpen((p) => !p)}
-              className="text-gray-400 hover:text-gray-600 p-1"
+              onClick={() => setMenuOpen(!menuOpen)}
+              className="text-gray-400 hover:text-gray-600"
             >
-              <MoreHorizontal className="w-5 h-5" />
+              <MoreHorizontal />
             </button>
 
             {menuOpen && (
-              <div className="absolute right-0 mt-1 w-32 bg-white border rounded-md shadow-md z-20">
+              <div className="absolute right-0 bg-white border rounded-md shadow-md w-32">
                 <button
+                  className="flex items-center px-3 py-2 text-sm w-full hover:bg-gray-100"
                   onClick={() => {
                     setMenuOpen(false);
                     setEditingPost(localPost);
                   }}
-                  className="flex items-center w-full px-3 py-2 text-sm hover:bg-gray-100"
                 >
                   <Edit2 className="w-4 h-4 mr-2" /> Edit
                 </button>
 
                 <button
+                  className="flex items-center px-3 py-2 text-sm w-full text-red-600 hover:bg-gray-100"
                   onClick={handleDelete}
-                  className="flex items-center w-full px-3 py-2 text-sm text-red-600 hover:bg-gray-100"
                 >
                   <Trash2 className="w-4 h-4 mr-2" /> Delete
                 </button>
@@ -218,69 +174,60 @@ const PostCard = ({ post, currentUser, onDelete, onEdit, onShare }) => {
 
       {/* CONTENT */}
       {localPost.content && (
-        <p className="px-4 pb-2 text-sm text-gray-800 whitespace-pre-wrap">
+        <p className="px-4 pb-2 text-gray-800 whitespace-pre-wrap text-sm">
           {localPost.content}
         </p>
       )}
 
       {/* MEDIA */}
       {localPost.image && (
-        <img src={localPost.image} className="w-full max-h-[500px] object-cover border-t" />
+        <img src={localPost.image} className="w-full max-h-[480px] object-cover" />
       )}
       {localPost.video && (
-        <video controls className="w-full border-t rounded-b-xl">
-          <source src={localPost.video} type="video/mp4" />
-        </video>
+        <video src={localPost.video} controls className="w-full" />
       )}
 
-      {/* ACTION BAR */}
-      <div className="flex items-center justify-between px-4 py-2 border-t text-sm text-gray-600">
+      {/* ACTIONS */}
+      <div className="flex justify-between px-4 py-2 text-sm text-gray-600 border-t">
         <button
           onClick={handleLike}
-          className={`flex items-center space-x-1 ${
+          className={`flex gap-1 items-center ${
             liked ? "text-[#0A66C2]" : "hover:text-[#0A66C2]"
           }`}
         >
-          <Heart
-            className={`w-4 h-4 ${
-              liked ? "fill-[#0A66C2] stroke-[#0A66C2]" : ""
-            }`}
-          />
-          <span>{likes}</span>
+          <Heart className={liked ? "fill-[#0A66C2] stroke-[#0A66C2]" : ""} />
+          {likes}
         </button>
 
         <button
-          onClick={() => setShowComments((prev) => !prev)}
-          className="flex items-center space-x-1 hover:text-[#0A66C2]"
+          onClick={() => setShowComments(!showComments)}
+          className="flex gap-1 items-center hover:text-[#0A66C2]"
         >
-          <MessageCircle className="w-4 h-4" />
-          <span>{comments.length}</span>
+          <MessageCircle />
+          {comments.length}
         </button>
 
-        {/* SHARE MENU */}
+        {/* SHARE */}
         <div className="relative">
           <button
-            onClick={handleNativeShare}
-            className="flex items-center space-x-1 hover:text-[#0A66C2]"
+            onClick={() => setShareMenuOpen(!shareMenuOpen)}
+            className="flex gap-1 items-center hover:text-[#0A66C2]"
           >
-            <Share2 className="w-4 h-4" />
-            <span>{shareCount}</span>
+            <Share2 />
+            {shareCount}
           </button>
 
-          {sharingMenu && (
-            <div className="absolute right-0 mt-2 w-48 bg-white shadow border rounded p-2 z-30">
-              <button
-                onClick={handleCopyLink}
-                className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-100"
-              >
-                <Link2 className="w-4 h-4" /> Copy Link
+          {shareMenuOpen && (
+            <div className="absolute right-0 bg-white shadow border w-40 p-2 rounded-md">
+              <button className="flex gap-2 py-1 px-2 w-full hover:bg-gray-100" onClick={copyLink}>
+                <Link2 className="w-4" /> Copy link
               </button>
 
               <button
+                className="flex gap-2 py-1 px-2 w-full text-[#0A66C2] hover:bg-gray-100"
                 onClick={handleInternalShare}
-                className="w-full px-3 py-2 text-sm border-t text-[#0A66C2] hover:bg-gray-100"
               >
-                🔁 Share within app
+                🔁 Share in app
               </button>
             </div>
           )}
@@ -289,34 +236,34 @@ const PostCard = ({ post, currentUser, onDelete, onEdit, onShare }) => {
 
       {/* COMMENTS */}
       {showComments && (
-        <div className="px-4 py-3 border-t bg-gray-50">
+        <div className="px-4 py-2 bg-gray-50 border-t">
           {comments.map((c) => (
-            <div key={c._id} className="flex gap-2 mb-3">
+            <div key={c._id} className="flex gap-2 mb-2">
               <img
                 src={c.user?.avatar || "/default-avatar.png"}
-                className="w-8 h-8 rounded-full"
+                className="w-7 h-7 rounded-full"
               />
-              <div className="bg-white border rounded-lg px-3 py-1.5 shadow-sm max-w-[85%]">
-                <p className="text-sm font-semibold">{c.user?.name}</p>
-                <p className="text-sm text-gray-700">{c.text}</p>
+              <div className="bg-white rounded-lg p-2 border text-sm shadow-sm">
+                <p className="font-semibold">{c.user?.name}</p>
+                {c.text}
               </div>
             </div>
           ))}
 
-          {/* ADD COMMENT */}
           <div className="flex gap-2 mt-2">
             <input
+              className="flex-1 border rounded-full px-3 py-1"
+              placeholder="Write a comment..."
               value={commentText}
               onChange={(e) => setCommentText(e.target.value)}
-              placeholder="Write a comment..."
-              className="flex-1 border rounded-full px-3 py-1.5 text-sm"
             />
+
             <button
               disabled={commenting}
               onClick={handleComment}
-              className="p-2 hover:bg-gray-100 rounded-full"
+              className="p-2 text-[#0A66C2] hover:bg-gray-100 rounded-full"
             >
-              <Send className="w-4 h-4 text-[#0A66C2]" />
+              <Send />
             </button>
           </div>
         </div>
@@ -326,8 +273,9 @@ const PostCard = ({ post, currentUser, onDelete, onEdit, onShare }) => {
       {editingPost && (
         <EditPostModal
           post={editingPost}
-          onClose={() => setEditingPost(null)}
           onSave={handleEditSave}
+          onClose={() => setEditingPost(null)}
+          onDelete={handleDelete} // supports delete inside modal too
         />
       )}
     </div>
