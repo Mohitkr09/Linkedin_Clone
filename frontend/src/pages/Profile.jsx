@@ -8,9 +8,8 @@ export default function Profile() {
   const { id } = useParams();
   const navigate = useNavigate();
 
-  const loggedUser = JSON.parse(localStorage.getItem("user"));
-  const token = loggedUser?.token;
-
+  const storedUser = JSON.parse(localStorage.getItem("user"));
+  const token = storedUser?.token;
   const API_URL = import.meta.env.VITE_API_URL;
 
   const [user, setUser] = useState(null);
@@ -26,14 +25,13 @@ export default function Profile() {
 
   /* AUTH CHECK */
   useEffect(() => {
-    if (!loggedUser) navigate("/login");
+    if (!storedUser) navigate("/login");
   }, []);
 
-  /* FETCH PROFILE */
+  /* FETCH PROFILE DATA */
   const fetchProfile = async () => {
     try {
-      const endpoint = id ? `/users/${id}` : `/users/me`;
-
+      const endpoint = id ? `/users/${id}` : "/users/me";
       const res = await axios.get(`${API_URL}${endpoint}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -52,14 +50,13 @@ export default function Profile() {
     if (token) fetchProfile();
   }, [id]);
 
-  /* UPDATE AVATAR */
+  /* UPDATE PROFILE PHOTO */
   const handleAvatarChange = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
     setUploading(true);
-    const previewURL = URL.createObjectURL(file);
-    setAvatarPreview(previewURL);
+    setAvatarPreview(URL.createObjectURL(file));
 
     const compressed = await imageCompression(file, { maxSizeMB: 1 });
     const fd = new FormData();
@@ -78,15 +75,16 @@ export default function Profile() {
       setUser((u) => ({ ...u, avatar: updatedAvatar }));
       localStorage.setItem(
         "user",
-        JSON.stringify({ ...loggedUser, avatar: updatedAvatar })
+        JSON.stringify({ ...storedUser, _id: storedUser._id, avatar: updatedAvatar })
       );
+
       window.dispatchEvent(new Event("storage"));
     } finally {
       setUploading(false);
     }
   };
 
-  /* SAVE HEADLINE, BIO, ABOUT */
+  /* SAVE PROFILE TEXT FIELDS */
   const saveField = async (field) => {
     const body =
       field === "headline"
@@ -101,7 +99,6 @@ export default function Profile() {
       });
 
       setUser((prev) => ({ ...prev, ...res.data }));
-
       if (field === "headline") setEditHeadline(false);
       if (field === "bio") setEditBio(false);
       if (field === "about") setEditAbout(false);
@@ -118,42 +115,71 @@ export default function Profile() {
     );
 
   const fallbackAvatar = "https://cdn-icons-png.flaticon.com/512/3135/3135715.png";
+  const isOwner = String(storedUser?._id) === String(user?._id);
 
   return (
     <div className="bg-gray-100 min-h-screen flex justify-center py-8 px-4">
       <div className="max-w-3xl w-full bg-white rounded-xl shadow border">
-        {/* BANNER + AVATAR */}
+        
+        {/* COVER + PROFILE PHOTO */}
         <div className="h-40 bg-gradient-to-r from-[#0A66C2] to-[#004182] relative">
-          <div className="absolute -bottom-14 left-8">
+          <div className="absolute -bottom-14 left-8 flex items-center gap-4">
             <label className="relative cursor-pointer group">
               <img
                 src={avatarPreview || user.avatar || fallbackAvatar}
                 alt="avatar"
-                className="w-28 h-28 rounded-full border-4 border-white shadow"
+                className="w-28 h-28 rounded-full border-4 border-white shadow object-cover"
               />
-              {user._id === loggedUser?._id && (
+
+              {/* Upload button area */}
+              {isOwner && (
                 <>
                   <input
                     type="file"
                     className="absolute inset-0 opacity-0 cursor-pointer"
                     onChange={handleAvatarChange}
                   />
-                  {!user.avatar && (
+                  {/* Add Photo label */}
+                  {!user.avatar && !uploading && (
                     <span className="absolute bottom-0 left-0 text-xs bg-white px-2 py-1 rounded shadow text-[#0A66C2]">
                       Add Photo
                     </span>
                   )}
                 </>
               )}
+
+              {/* Uploading overlay */}
+              {uploading && (
+                <div className="absolute inset-0 bg-black/50 flex justify-center items-center text-white text-xs rounded-full">
+                  Uploading...
+                </div>
+              )}
             </label>
+
+            {/* Button always visible for owner */}
+            {isOwner && (
+              <button
+                onClick={() => document.getElementById("avatar-input").click()}
+                className="px-4 py-1 bg-[#0A66C2] text-white rounded-full shadow text-sm hover:bg-[#004182]"
+              >
+                {user.avatar ? "Change Photo" : "Add Profile Picture"}
+              </button>
+            )}
+
+            <input
+              id="avatar-input"
+              type="file"
+              className="hidden"
+              accept="image/*"
+              onChange={handleAvatarChange}
+            />
           </div>
         </div>
 
-        {/* MAIN INFO */}
+        {/* USER INFORMATION */}
         <div className="pt-20 px-8 pb-10">
           <h2 className="text-2xl font-bold">{user.name}</h2>
 
-          {/* HEADLINE */}
           <Editable
             label="Headline"
             value={headline}
@@ -162,11 +188,10 @@ export default function Profile() {
             setValue={setHeadline}
             setEditing={setEditHeadline}
             save={() => saveField("headline")}
-            owner={loggedUser?._id === user._id}
+            owner={isOwner}
             addLabel="Add Headline"
           />
 
-          {/* BIO */}
           <Editable
             label="Bio"
             value={bio}
@@ -176,18 +201,13 @@ export default function Profile() {
             setEditing={setEditBio}
             save={() => saveField("bio")}
             textarea
-            owner={loggedUser?._id === user._id}
+            owner={isOwner}
             addLabel="Add Bio"
           />
 
-          {/* FOLLOWERS */}
           <div className="flex gap-10 mt-6 text-sm text-gray-600 border-t pt-4">
-            <p>
-              <b>{user.followers?.length || 0}</b> followers
-            </p>
-            <p>
-              <b>{user.following?.length || 0}</b> following
-            </p>
+            <p><b>{user.followers?.length || 0}</b> followers</p>
+            <p><b>{user.following?.length || 0}</b> following</p>
           </div>
         </div>
 
@@ -202,7 +222,7 @@ export default function Profile() {
           save={() => saveField("about")}
           textarea
           wrapper
-          owner={loggedUser?._id === user._id}
+          owner={isOwner}
           addLabel="Add About"
         />
       </div>
@@ -210,9 +230,7 @@ export default function Profile() {
   );
 }
 
-/********************************
- REUSABLE EDIT COMPONENT
-********************************/
+/* SUB COMPONENT: EDIT FIELD */
 function Editable({
   label,
   value,
@@ -222,8 +240,8 @@ function Editable({
   save,
   setValue,
   owner,
-  textarea = false,
-  wrapper = false,
+  textarea,
+  wrapper,
   addLabel,
 }) {
   if (wrapper)
@@ -293,9 +311,7 @@ function Editable({
   );
 }
 
-/********************************
- BUTTON COMPONENT
-********************************/
+/* SAVE/CANCEL BUTTONS */
 function Buttons({ save, cancel }) {
   return (
     <div className="flex mt-2 gap-3">
