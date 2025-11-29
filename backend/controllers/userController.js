@@ -27,14 +27,14 @@ export const getMyProfile = async (req, res) => {
 };
 
 /* =============================================
-   👤 GET USER BY ID
+   👤 GET USER BY ID (supports "me")
 ============================================= */
 export const getUserProfile = async (req, res) => {
   try {
-    if (!req.params.id)
-      return res.status(400).json({ message: "User ID is required" });
+    const userId =
+      req.params.id === "me" || !req.params.id ? req.user._id : req.params.id;
 
-    const user = await User.findById(req.params.id)
+    const user = await User.findById(userId)
       .select("-passwordHash")
       .populate("followers", "name avatar headline")
       .populate("following", "name avatar headline");
@@ -50,6 +50,7 @@ export const getUserProfile = async (req, res) => {
     res.status(500).json({ message: "Error fetching user profile" });
   }
 };
+
 
 /* =============================================
    ✏️ UPDATE USER DETAILS
@@ -98,12 +99,12 @@ export const updateAvatar = async (req, res) => {
     const uploadToCloudinary = () =>
       new Promise((resolve, reject) => {
         cloudinary.uploader.upload_stream(
-          { folder: "linkedin_clone/avatars" },
+          { folder: "CLONE/avatars" },
           (err, result) => (err ? reject(err) : resolve(result))
         );
         streamifier.createReadStream(req.file.buffer).pipe(
           cloudinary.uploader.upload_stream(
-            { folder: "linkedin_clone/avatars" },
+            { folder: "CLONE/avatars" },
             (err, result) => (err ? reject(err) : resolve(result))
           )
         );
