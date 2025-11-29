@@ -1,111 +1,118 @@
+// src/components/EditPostModal.jsx
 import { useState } from "react";
 import axios from "axios";
-import { X, Image, Loader2 } from "lucide-react";
+import { X, Image, Trash2, Loader2 } from "lucide-react";
 
-const EditPostModal = ({ post, onClose, onSave }) => {
+const EditPostModal = ({ post, onClose, onSave, onDelete }) => {
   const [content, setContent] = useState(post.content);
   const [file, setFile] = useState(null);
   const [preview, setPreview] = useState(post.image || post.video || null);
   const [fileType, setFileType] = useState(
     post.image ? "image" : post.video ? "video" : null
   );
+
   const [uploading, setUploading] = useState(false);
 
   const user = JSON.parse(localStorage.getItem("user"));
+  const API_URL = import.meta.env.VITE_API_URL; // 🔥 USE ENV
 
-  // ✅ Handle file selection
+  /* =========================================================
+     📁 Select new media for update
+  ========================================================= */
   const handleFileChange = (e) => {
     const selected = e.target.files[0];
     if (!selected) return;
 
     setFile(selected);
-    const type = selected.type.startsWith("video") ? "video" : "image";
-    setFileType(type);
+    setFileType(selected.type.startsWith("video") ? "video" : "image");
     setPreview(URL.createObjectURL(selected));
   };
 
-  // ✅ Handle save (update post via backend)
+  /* =========================================================
+     📝 SAVE UPDATED POST
+  ========================================================= */
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!content.trim() && !file) {
-      alert("Please add text or media before saving.");
+      alert("Post cannot be empty.");
       return;
     }
 
     try {
       setUploading(true);
 
-      const formData = new FormData();
-      formData.append("content", content.trim());
-      if (file) formData.append("file", file); // backend handles image/video detection
+      const fd = new FormData();
+      fd.append("content", content.trim());
+      if (file) fd.append("media", file); // 🔥 backend expects this
 
-      // ✅ Update post via backend
-      const res = await axios.put(
-        `http://localhost:5000/api/posts/${post._id}`,
-        formData,
-        {
-          headers: {
-            "Content-Type": "multipart/form-data",
-            Authorization: `Bearer ${user?.token}`,
-          },
-        }
-      );
+      const res = await axios.put(`${API_URL}/posts/${post._id}`, fd, {
+        headers: { Authorization: `Bearer ${user?.token}` },
+      });
 
-      // ✅ Pass updated post back to parent (Feed/PostCard)
-      if (res.data?.post) {
-        onSave(res.data.post); // << Correct key
-      } else {
-        console.warn("⚠️ Backend did not return updated post.");
-      }
-
+      onSave(res.data); // update feed UI
       onClose();
-    } catch (error) {
-      console.error("❌ Error updating post:", error.response?.data || error);
-      alert(error.response?.data?.message || "Failed to update post.");
+    } catch (err) {
+      console.error("❌ Update failed:", err.response?.data || err);
+      alert("Failed to update post");
     } finally {
       setUploading(false);
     }
   };
 
+  /* =========================================================
+     🗑 DELETE POST
+  ========================================================= */
+  const handleDelete = async () => {
+    if (!confirm("Are you sure you want to delete this post?")) return;
+
+    try {
+      setUploading(true);
+
+      await axios.delete(`${API_URL}/posts/${post._id}`, {
+        headers: { Authorization: `Bearer ${user?.token}` },
+      });
+
+      onDelete(post._id); // remove from feed
+      onClose();
+    } catch (err) {
+      console.error("❌ Delete failed:", err.response?.data || err);
+      alert("Failed to delete post");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  /* =========================================================
+     MODAL UI
+  ========================================================= */
   return (
     <div className="fixed inset-0 bg-black/40 flex justify-center items-center z-50 px-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg relative animate-fadeIn p-6">
-        {/* Close button */}
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6 relative animate-fadeIn">
+
         <button
           onClick={onClose}
-          className="absolute top-3 right-3 text-gray-500 hover:text-gray-800 p-1 rounded-full hover:bg-gray-100 transition"
+          className="absolute top-3 right-3 text-gray-500 hover:text-gray-800"
         >
           <X className="w-5 h-5" />
         </button>
 
-        {/* Header */}
-        <h2 className="text-lg font-semibold text-gray-900 mb-3">Edit Post</h2>
+        <h2 className="text-lg font-semibold">Edit Post</h2>
 
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-          {/* Textarea */}
+        <form onSubmit={handleSubmit} className="mt-4 space-y-4">
           <textarea
-            rows="4"
             value={content}
             onChange={(e) => setContent(e.target.value)}
-            placeholder="What do you want to update?"
-            className="w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-[#0A66C2] focus:outline-none text-sm text-gray-800"
+            className="w-full border p-3 rounded-lg focus:ring-[#0A66C2] text-sm"
+            rows={4}
+            placeholder="Update your post..."
           />
 
-          {/* Media Preview */}
           {preview && (
             <div className="relative">
               {fileType === "image" ? (
-                <img
-                  src={preview}
-                  alt="Preview"
-                  className="rounded-lg w-full max-h-80 object-contain border"
-                />
+                <img src={preview} className="rounded-lg border max-h-80 object-contain" />
               ) : (
-                <video
-                  src={preview}
-                  controls
-                  className="rounded-lg w-full max-h-80 border"
-                />
+                <video src={preview} controls className="rounded-lg border max-h-80" />
               )}
 
               <button
@@ -115,38 +122,40 @@ const EditPostModal = ({ post, onClose, onSave }) => {
                   setPreview(null);
                   setFileType(null);
                 }}
-                className="absolute top-2 right-2 bg-black bg-opacity-50 text-white rounded-full p-1 hover:bg-opacity-70 transition"
+                className="absolute top-2 right-2 bg-black/60 text-white p-1 rounded-full"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
           )}
 
-          {/* Upload Input */}
-          <label className="cursor-pointer text-[#0A66C2] flex items-center gap-2 text-sm font-medium hover:text-[#004182] transition">
+          <label className="cursor-pointer text-[#0A66C2] flex items-center gap-2 hover:text-[#004182]">
             <Image className="w-4 h-4" />
-            <span>Add or Replace Image/Video</span>
-            <input
-              type="file"
-              accept="image/*,video/*"
-              onChange={handleFileChange}
-              className="hidden"
-            />
+            Change Image/Video
+            <input type="file" accept="image/*,video/*" onChange={handleFileChange} className="hidden" />
           </label>
 
-          {/* Submit Button */}
-          <button
-            type="submit"
-            disabled={uploading}
-            className={`flex items-center justify-center gap-2 py-2.5 rounded-full font-medium text-white transition ${
-              uploading
-                ? "bg-blue-400 cursor-not-allowed"
-                : "bg-[#0A66C2] hover:bg-[#004182]"
-            }`}
-          >
-            {uploading && <Loader2 className="w-4 h-4 animate-spin" />}
-            {uploading ? "Saving..." : "Save Changes"}
-          </button>
+          <div className="flex justify-between mt-4">
+            {/* DELETE BUTTON */}
+            <button
+              type="button"
+              onClick={handleDelete}
+              className="flex items-center gap-2 px-4 py-2 text-red-600 border border-red-500 rounded-full hover:bg-red-600 hover:text-white transition"
+              disabled={uploading}
+            >
+              <Trash2 className="w-4 h-4" /> Delete
+            </button>
+
+            {/* SAVE BUTTON */}
+            <button
+              type="submit"
+              disabled={uploading}
+              className="flex items-center gap-2 px-6 py-2 bg-[#0A66C2] text-white rounded-full hover:bg-[#004182] transition"
+            >
+              {uploading && <Loader2 className="w-4 h-4 animate-spin" />}
+              {uploading ? "Saving..." : "Save"}
+            </button>
+          </div>
         </form>
       </div>
     </div>

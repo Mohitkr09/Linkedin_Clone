@@ -4,278 +4,184 @@ import streamifier from "streamifier";
 import fs from "fs";
 import path from "path";
 
-/* ========================================================
-   👤 USER PROFILE CONTROLLERS
-======================================================== */
-
-// ✅ Get current logged-in user's profile
+/* =============================================
+   👤 GET CURRENT USER PROFILE
+============================================= */
 export const getMyProfile = async (req, res) => {
   try {
     const user = await User.findById(req.user._id)
-      .select("-password")
+      .select("-passwordHash")
       .populate("followers", "name avatar headline")
       .populate("following", "name avatar headline");
 
-    if (!user)
-      return res.status(404).json({ message: "User not found" });
+    if (!user) return res.status(404).json({ message: "User not found" });
 
-    res.status(200).json(user);
+    res.status(200).json({
+      ...user._doc,
+      _id: user._id, // ensure _id always present
+    });
   } catch (error) {
-    console.error("❌ [Profile] Error fetching current user:", error);
-    res
-      .status(500)
-      .json({ message: "Server error fetching current user profile" });
+    console.error("❌ [Profile] Error:", error);
+    res.status(500).json({ message: "Error fetching profile" });
   }
 };
 
-// ✅ Get another user's profile by ID
+/* =============================================
+   👤 GET USER BY ID
+============================================= */
 export const getUserProfile = async (req, res) => {
   try {
+    if (!req.params.id)
+      return res.status(400).json({ message: "User ID is required" });
+
     const user = await User.findById(req.params.id)
-      .select("-password")
+      .select("-passwordHash")
       .populate("followers", "name avatar headline")
       .populate("following", "name avatar headline");
 
-    if (!user)
-      return res.status(404).json({ message: "User not found" });
+    if (!user) return res.status(404).json({ message: "User not found" });
 
-    res.status(200).json(user);
+    res.status(200).json({
+      ...user._doc,
+      _id: user._id,
+    });
   } catch (error) {
-    console.error("❌ [Profile] Error fetching user profile:", error);
-    res
-      .status(500)
-      .json({ message: "Server error fetching user profile" });
+    console.error("❌ [Profile] Error:", error);
+    res.status(500).json({ message: "Error fetching user profile" });
   }
 };
 
-// ✅ Update user details (bio, headline, location, about)
+/* =============================================
+   ✏️ UPDATE USER DETAILS
+============================================= */
 export const updateUser = async (req, res) => {
   try {
-    const { bio, headline, location, about } = req.body;
-    const user = await User.findById(req.user._id);
+    const { bio, headline, about, location } = req.body;
 
-    if (!user)
-      return res.status(404).json({ message: "User not found" });
+    const user = await User.findById(req.user._id);
+    if (!user) return res.status(404).json({ message: "User not found" });
 
     if (bio !== undefined) user.bio = bio;
     if (headline !== undefined) user.headline = headline;
-    if (location !== undefined) user.location = location;
     if (about !== undefined) user.about = about;
+    if (location !== undefined) user.location = location;
 
-    const updatedUser = await user.save();
+    const updated = await user.save();
 
     res.status(200).json({
-      _id: updatedUser._id,
-      name: updatedUser.name,
-      email: updatedUser.email,
-      avatar: updatedUser.avatar,
-      bio: updatedUser.bio,
-      headline: updatedUser.headline,
-      location: updatedUser.location,
-      about: updatedUser.about,
-      followers: updatedUser.followers,
-      following: updatedUser.following,
+      _id: updated._id,
+      name: updated.name,
+      avatar: updated.avatar,
+      bio: updated.bio,
+      headline: updated.headline,
+      about: updated.about,
+      location: updated.location,
+      followers: updated.followers,
+      following: updated.following,
     });
   } catch (error) {
-    console.error("❌ [Profile] Error updating user:", error);
-    res.status(500).json({ message: "Server error updating user" });
+    console.error("❌ [Update] Error:", error);
+    res.status(500).json({ message: "Failed to update profile" });
   }
 };
 
-/* ========================================================
-   🖼️ UPDATE PROFILE AVATAR (Cloudinary + Fallback)
-======================================================== */
+/* =============================================
+   🖼 UPDATE USER AVATAR (Cloudinary)
+============================================= */
 export const updateAvatar = async (req, res) => {
   try {
-    if (!req.file)
-      return res.status(400).json({ message: "No file uploaded" });
+    if (!req.file) return res.status(400).json({ message: "No file uploaded" });
 
     const user = await User.findById(req.user._id);
-    if (!user)
-      return res.status(404).json({ message: "User not found" });
+    if (!user) return res.status(404).json({ message: "User not found" });
 
-    // ✅ Cloudinary upload as a stream (no temp files)
     const uploadToCloudinary = () =>
       new Promise((resolve, reject) => {
-        const stream = cloudinary.uploader.upload_stream(
-          {
-            folder: "linkedin_clone/avatars",
-            resource_type: "image",
-            timeout: 60000,
-          },
-          (error, result) => {
-            if (error) reject(error);
-            else resolve(result);
-          }
+        cloudinary.uploader.upload_stream(
+          { folder: "linkedin_clone/avatars" },
+          (err, result) => (err ? reject(err) : resolve(result))
         );
-        streamifier.createReadStream(req.file.buffer).pipe(stream);
+        streamifier.createReadStream(req.file.buffer).pipe(
+          cloudinary.uploader.upload_stream(
+            { folder: "linkedin_clone/avatars" },
+            (err, result) => (err ? reject(err) : resolve(result))
+          )
+        );
       });
 
-    let uploadResponse;
+    let uploaded;
     try {
-      uploadResponse = await uploadToCloudinary();
-    } catch (cloudErr) {
-      console.error("⚠️ [Cloudinary] Upload failed, fallback:", cloudErr);
-
-      // ✅ Local fallback upload
-      const uploadsDir = path.resolve("uploads");
-      if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir);
-
-      const filePath = path.join(
-        uploadsDir,
-        `${user._id}_${Date.now()}_${req.file.originalname}`
-      );
-
-      fs.writeFileSync(filePath, req.file.buffer);
-
-      // Build a URL based on deployment
-      const baseUrl =
-        process.env.NODE_ENV === "production"
-          ? process.env.FRONTEND_URL || "https://yourdomain.com"
-          : "http://localhost:5000";
-
-      user.avatar = `${baseUrl}/${filePath.replace(/\\/g, "/")}`;
-      await user.save();
-
-      return res.status(200).json({
-        avatar: user.avatar,
-        message: "⚠️ Uploaded locally (Cloudinary failed)",
-      });
+      uploaded = await uploadToCloudinary();
+      user.avatar = uploaded.secure_url;
+    } catch {
+      console.warn("⚠ Cloudinary failed, using local storage");
+      const dest = path.join("uploads", `${user._id}_${Date.now()}.jpg`);
+      fs.writeFileSync(dest, req.file.buffer);
+      user.avatar = `http://localhost:5000/${dest}`;
     }
 
-    user.avatar = uploadResponse.secure_url;
     await user.save();
-
     res.status(200).json({ avatar: user.avatar });
   } catch (error) {
-    console.error("❌ [Avatar] Error updating avatar:", error);
-    res.status(500).json({ message: "Failed to update avatar" });
+    console.error("❌ [Avatar] Error:", error);
+    res.status(500).json({ message: "Error updating avatar" });
   }
 };
 
-/* ========================================================
-   🤝 FOLLOW / UNFOLLOW CONTROLLERS
-======================================================== */
-
-// ✅ Follow a user
+/* =============================================
+   🤝 FOLLOW / UNFOLLOW
+============================================= */
 export const followUser = async (req, res) => {
   try {
-    const userId = req.user._id.toString();
-    const targetId = req.params.id.toString();
+    if (req.user._id.toString() === req.params.id)
+      return res.status(400).json({ message: "You cannot follow yourself" });
 
-    if (userId === targetId)
-      return res
-        .status(400)
-        .json({ message: "You can't follow yourself." });
+    const target = await User.findById(req.params.id);
+    const user = await User.findById(req.user._id);
 
-    const [user, target] = await Promise.all([
-      User.findById(userId),
-      User.findById(targetId),
-    ]);
+    if (!target) return res.status(404).json({ message: "User not found" });
+    if (user.following.includes(req.params.id))
+      return res.status(400).json({ message: "Already following user" });
 
-    if (!target)
-      return res.status(404).json({ message: "User not found." });
+    user.following.push(target._id);
+    target.followers.push(user._id);
 
-    if (user.following.includes(targetId))
-      return res
-        .status(400)
-        .json({ message: "Already following this user." });
+    await user.save();
+    await target.save();
 
-    user.following.push(targetId);
-    target.followers.push(userId);
-
-    await Promise.all([user.save(), target.save()]);
-
-    res.json({
-      message: `You followed ${target.name}`,
-      targetId,
-      followersCount: target.followers.length,
-    });
-  } catch (error) {
-    console.error("❌ [Follow] Error:", error);
-    res
-      .status(500)
-      .json({ message: "Server error while following user." });
+    res.json({ message: "Followed", followers: target.followers.length });
+  } catch (e) {
+    res.status(500).json({ message: "Follow failed" });
   }
 };
 
-// ✅ Unfollow a user
 export const unfollowUser = async (req, res) => {
   try {
-    const userId = req.user._id.toString();
-    const targetId = req.params.id.toString();
+    const user = await User.findById(req.user._id);
+    const target = await User.findById(req.params.id);
 
-    if (userId === targetId)
-      return res
-        .status(400)
-        .json({ message: "You can't unfollow yourself." });
+    user.following = user.following.filter((id) => id.toString() !== req.params.id);
+    target.followers = target.followers.filter((id) => id.toString() !== req.user._id);
 
-    const [user, target] = await Promise.all([
-      User.findById(userId),
-      User.findById(targetId),
-    ]);
+    await user.save();
+    await target.save();
 
-    if (!target)
-      return res.status(404).json({ message: "User not found." });
-
-    user.following = user.following.filter((id) => id.toString() !== targetId);
-    target.followers = target.followers.filter((id) => id.toString() !== userId);
-
-    await Promise.all([user.save(), target.save()]);
-
-    res.json({
-      message: `You unfollowed ${target.name}`,
-      targetId,
-      followersCount: target.followers.length,
-    });
-  } catch (error) {
-    console.error("❌ [Unfollow] Error:", error);
-    res
-      .status(500)
-      .json({ message: "Server error while unfollowing user." });
+    res.json({ message: "Unfollowed", followers: target.followers.length });
+  } catch {
+    res.status(500).json({ message: "Unfollow failed" });
   }
 };
 
-// ✅ Get followers & following lists
-export const getFollowData = async (req, res) => {
-  try {
-    const user = await User.findById(req.params.id)
-      .populate("followers", "name avatar headline")
-      .populate("following", "name avatar headline");
-
-    if (!user)
-      return res.status(404).json({ message: "User not found" });
-
-    res.status(200).json({
-      followers: user.followers,
-      following: user.following,
-    });
-  } catch (error) {
-    console.error("❌ [FollowData] Error:", error);
-    res
-      .status(500)
-      .json({ message: "Server error fetching follow data." });
-  }
-};
-
-/* ========================================================
-   🌐 GET ALL USERS (for Network Page)
-======================================================== */
-// ✅ Get all users except the current logged-in one
+/* =============================================
+   🌐 GET ALL USERS
+============================================= */
 export const getAllUsers = async (req, res) => {
   try {
-    const users = await User.find({ _id: { $ne: req.user._id } })
-      .select("_id name headline avatar connections followers following");
-
-    if (!users || users.length === 0) {
-      return res.status(200).json([]); // return empty array, not an error
-    }
-
-    res.status(200).json(users);
+    const users = await User.find({ _id: { $ne: req.user._id } }).select(
+      "_id name headline avatar followers following"
+    );
+    res.json(users);
   } catch (error) {
-    console.error("❌ [Users] Fetch error:", error);
-    res.status(500).json({ message: "Server error fetching users" });
+    res.status(500).json({ message: "Error loading users" });
   }
 };
-
-

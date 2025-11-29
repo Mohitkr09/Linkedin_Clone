@@ -1,10 +1,11 @@
+// src/pages/ChatWindow.jsx
 import React, { useEffect, useState, useRef } from "react";
 import { io } from "socket.io-client";
 import API from "../api";
 import { useParams, useNavigate } from "react-router-dom";
 
 export default function ChatWindow() {
-  const { userId } = useParams(); // Chat partner ID
+  const { userId } = useParams(); // Receiver ID
   const navigate = useNavigate();
 
   const [messages, setMessages] = useState([]);
@@ -29,11 +30,15 @@ export default function ChatWindow() {
   }
 
   /* =========================================================
-     SOCKET INIT and LISTEN
+     SOCKET INIT + REGISTER USER
   ========================================================= */
   useEffect(() => {
     if (!socket.current) {
-      socket.current = io(import.meta.env.VITE_BACKEND_URL);
+      socket.current = io(import.meta.env.VITE_SOCKET_URL, {
+        withCredentials: true,
+        transports: ["websocket"],
+      });
+
       socket.current.emit("registerUser", loggedUser._id);
     }
 
@@ -47,20 +52,22 @@ export default function ChatWindow() {
   }, [userId]);
 
   /* =========================================================
-     FETCH CONNECTIONS (ONLY ACCEPTED USERS)
+     FETCH CONNECTED USERS
   ========================================================= */
   useEffect(() => {
-    API.get("/users/me", { headers: { Authorization: `Bearer ${token}` } })
+    API.get("/users/me", {
+      headers: { Authorization: `Bearer ${token}` },
+    })
       .then((res) => setConnections(res.data.connections || []))
       .catch((err) => console.error("❌ Error fetching connections:", err));
   }, []);
 
   /* =========================================================
-     BLOCK CHAT IF NOT A CONNECTION
+     BLOCK CHAT IF USER NOT IN CONNECTIONS
   ========================================================= */
   useEffect(() => {
     if (connections.length > 0 && !connections.includes(userId)) {
-      navigate("/messaging"); // redirect away
+      navigate("/messaging");
     }
   }, [connections, userId]);
 
@@ -69,13 +76,16 @@ export default function ChatWindow() {
   ========================================================= */
   useEffect(() => {
     if (!userId) return;
-    API.get(`/messages/${userId}`, { headers: { Authorization: `Bearer ${token}` } })
+
+    API.get(`/messages/${userId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
       .then((res) => setMessages(res.data || []))
-      .catch((err) => console.error("❌ Error fetching messages:", err));
+      .catch((err) => console.error("❌ History fetch error:", err));
   }, [userId]);
 
   /* =========================================================
-     AUTO-SCROLL TO BOTTOM ON NEW MESSAGE
+     AUTO SCROLL
   ========================================================= */
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -88,30 +98,33 @@ export default function ChatWindow() {
     const content = text.trim();
     if (!content) return;
 
-    // Store in DB
-    await API.post(
-      "/messages",
-      { to: userId, text: content },
-      { headers: { Authorization: `Bearer ${token}` } }
-    );
+    try {
+      await API.post(
+        "/messages",
+        { to: userId, content },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
 
-    // Emit via socket
-    socket.current.emit("sendMessage", {
-      senderId: loggedUser._id,
-      receiverId: userId,
-      content,
-    });
+      socket.current.emit("sendMessage", {
+        senderId: loggedUser._id,
+        receiverId: userId,
+        content,
+      });
 
-    setMessages((prev) => [
-      ...prev,
-      { sender: { _id: loggedUser._id }, content },
-    ]);
+      setMessages((prev) => [
+        ...prev,
+        { sender: { _id: loggedUser._id }, content },
+      ]);
 
-    setText("");
+      setText("");
+    } catch (error) {
+      console.error("❌ Send error:", error);
+      alert("Failed to send message.");
+    }
   };
 
   /* =========================================================
-     UI RENDER
+     UI
   ========================================================= */
   return (
     <div className="pt-20 max-w-4xl mx-auto bg-white rounded-xl shadow-md p-4 border">
@@ -124,12 +137,16 @@ export default function ChatWindow() {
         ) : (
           messages.map((msg, i) => {
             const mine = msg.sender?._id === loggedUser._id;
-
             return (
-              <div key={i} className={`my-2 flex ${mine ? "justify-end" : "justify-start"}`}>
+              <div
+                key={i}
+                className={`my-2 flex ${mine ? "justify-end" : "justify-start"}`}
+              >
                 <div
                   className={`px-4 py-2 rounded-lg text-sm max-w-[70%] ${
-                    mine ? "bg-[#0A66C2] text-white" : "bg-gray-200 text-gray-800"
+                    mine
+                      ? "bg-[#0A66C2] text-white"
+                      : "bg-gray-200 text-gray-800"
                   }`}
                 >
                   {msg.content}
@@ -138,17 +155,17 @@ export default function ChatWindow() {
             );
           })
         )}
-
         <div ref={bottomRef} />
       </div>
 
       {/* INPUT BOX */}
       <div className="flex mt-4 gap-2">
         <input
+          type="text"
           value={text}
           onChange={(e) => setText(e.target.value)}
-          className="flex-1 border rounded-full px-4 py-2 text-sm outline-none focus:ring-[#0A66C2]"
           placeholder="Type a message..."
+          className="flex-1 border rounded-full px-4 py-2 text-sm outline-none focus:ring-[#0A66C2]"
         />
         <button
           onClick={sendMessage}

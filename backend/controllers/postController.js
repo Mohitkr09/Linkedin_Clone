@@ -201,9 +201,7 @@ export const updatePost = async (req, res) => {
   }
 };
 
-/* =========================================================
-   ❌ Delete Post
-========================================================= */
+
 export const deletePost = async (req, res) => {
   try {
     const post = await Post.findById(req.params.id);
