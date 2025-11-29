@@ -17,7 +17,7 @@ import connectionRoutes from "./routes/connections.js";
 import messageRoutes from "./routes/messages.js";
 
 // ========================================================
-// ✅ Load Environment Variables
+// Load Environment Variables
 // ========================================================
 dotenv.config();
 
@@ -30,34 +30,35 @@ console.log({
 });
 
 // ========================================================
-// ✅ Connect to MongoDB
+// Connect to MongoDB
 // ========================================================
 connectDB();
 
 const app = express();
 
 // ========================================================
-// ✅ BODY PARSER CONFIGURATION
+// BODY PARSER
 // ========================================================
 app.use(express.json({ limit: "25mb" }));
 app.use(express.urlencoded({ limit: "25mb", extended: true }));
 
 // ========================================================
-// ✅ CORS CONFIGURATION (Supports Vercel + Localhost)
+// CORS CONFIGURATION
 // ========================================================
 const allowedOrigins = [
-  "http://localhost:5173",                   // Local dev
-  /\.vercel\.app$/,                          // ✅ Allow any Vercel frontend
-  "https://pacific-dedication-production-dbe8.up.railway.app", // Backend self-origin
+  "http://localhost:5173",
+  /\.vercel\.app$/, // allow any Vercel deployment domain
+  "https://linkedin-clone-vs16.onrender.com", // backend itself
 ];
 
 app.use(
   cors({
     origin: function (origin, callback) {
-      if (!origin) return callback(null, true); // Allow Postman / Mobile
+      if (!origin) return callback(null, true);
       const allowed = allowedOrigins.some((rule) =>
         rule instanceof RegExp ? rule.test(origin) : rule === origin
       );
+
       if (allowed) {
         console.log("✅ CORS allowed for:", origin);
         callback(null, true);
@@ -73,7 +74,7 @@ app.use(
 );
 
 // ========================================================
-// ✅ DEBUG LOGGER (Shows incoming requests)
+// DEBUG LOGGER
 // ========================================================
 app.use((req, res, next) => {
   console.log(`➡️  ${req.method} ${req.originalUrl}`);
@@ -81,39 +82,38 @@ app.use((req, res, next) => {
 });
 
 // ========================================================
-// ✅ STATIC FILES (for avatars/uploads)
+// STATIC FILES (Uploads, Images)
 // ========================================================
 app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 
 // ========================================================
-// ✅ API ROUTES
+// API ROUTES
 // ========================================================
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/posts", postRoutes);
-app.use("/api/connections", connectionRoutes);
+app.use("/api/connections", connectionRoutes); // <-- includes cancel route
 app.use("/api/messages", messageRoutes);
 
-// Optional: Simple health check route
-app.get("/api/health", (req, res) => res.send("✅ Backend is running fine!"));
+// Health check
+app.get("/api/health", (req, res) =>
+  res.send("✅ Backend is running fine!")
+);
 
 // ========================================================
-// ✅ SOCKET.IO INITIALIZATION
+// SOCKET.IO INITIALIZATION
 // ========================================================
 const server = http.createServer(app);
 
 const io = new Server(server, {
   cors: {
-    origin: [
-      "http://localhost:5173",
-      /\.vercel\.app$/, // Allow all vercel domains for socket connections too
-    ],
+    origin: ["http://localhost:5173", /\.vercel\.app$/],
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
   },
 });
 
 // ========================================================
-// ✅ SOCKET.IO EVENTS (Messaging + Users)
+// SOCKET.IO EVENTS
 // ========================================================
 const onlineUsers = new Map();
 
@@ -129,10 +129,7 @@ io.on("connection", (socket) => {
 
   socket.on("sendMessage", async ({ senderId, receiverId, content }) => {
     try {
-      if (!senderId || !receiverId || !content) {
-        console.warn("⚠️ Invalid message payload:", { senderId, receiverId, content });
-        return;
-      }
+      if (!senderId || !receiverId || !content) return;
 
       const newMessage = await Message.create({ sender: senderId, receiver: receiverId, content });
       const populatedMsg = await newMessage.populate([
@@ -142,8 +139,8 @@ io.on("connection", (socket) => {
 
       const receiverSocket = onlineUsers.get(receiverId);
       if (receiverSocket) io.to(receiverSocket).emit("receiveMessage", populatedMsg);
-      socket.emit("receiveMessage", populatedMsg);
 
+      socket.emit("receiveMessage", populatedMsg);
       console.log(`📤 Message ${senderId} → ${receiverId}`);
     } catch (error) {
       console.error("❌ Error in sendMessage:", error);
@@ -162,33 +159,28 @@ io.on("connection", (socket) => {
 });
 
 // ========================================================
-// ✅ SOCKET NOTIFICATION HELPERS
+// SOCKET NOTIFICATION HELPER
 // ========================================================
 export const sendNotification = (userId, notification) => {
   const socketId = onlineUsers.get(userId);
+
   if (socketId) {
     io.to(socketId).emit("newNotification", notification);
     console.log(`📢 Notification sent to ${userId}: ${notification.message}`);
   } else {
-    console.log(`⚠️ User ${userId} offline — notification saved to DB.`);
+    console.log(`⚠️ User ${userId} offline — notification saved.`);
   }
 };
 
 // ========================================================
-// ✅ GLOBAL ERROR HANDLERS
+// ERROR HANDLERS
 // ========================================================
-process.on("uncaughtException", (err) => {
-  console.error("❌ Uncaught Exception:", err);
-});
-process.on("unhandledRejection", (err) => {
-  console.error("❌ Unhandled Promise Rejection:", err);
-});
-io.on("error", (err) => {
-  console.error("❌ Socket.IO Error:", err.message);
-});
+process.on("uncaughtException", (err) => console.error("❌ Uncaught Exception:", err));
+process.on("unhandledRejection", (err) => console.error("❌ Unhandled Promise Rejection:", err));
+io.on("error", (err) => console.error("❌ Socket.IO Error:", err.message));
 
 // ========================================================
-// ✅ START SERVER
+// START SERVER
 // ========================================================
 const PORT = process.env.PORT || 8080;
 server.listen(PORT, () => {

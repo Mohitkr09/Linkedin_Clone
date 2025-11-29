@@ -7,18 +7,34 @@ import {
   getPendingRequests,
   getNotifications,
   markNotificationsAsRead,
-  getSentRequests, // ✅ Import new controller
+  getSentRequests,
+  cancelConnectionRequest, // 👈 ADD THIS
 } from "../controllers/connectionController.js";
 
 const router = express.Router();
 
-// ✅ Connection routes
+// 📌 Send new request
 router.post("/request/:userId", protect, sendConnectionRequest);
+
+// 📌 Accept request
 router.put("/accept/:fromId", protect, acceptConnection);
+
+// 📌 Reject request
 router.put("/reject/:fromId", protect, rejectConnection);
+
+// 📌 Cancel a sent request (NEW)
+router.delete("/request/cancel/:userId", protect, cancelConnectionRequest); // 👈 ADD THIS
+
+// 📌 All pending received requests
 router.get("/requests", protect, getPendingRequests);
+
+// 📌 Notifications
 router.get("/notifications", protect, getNotifications);
+
+// 📌 Mark all notifications as read
 router.put("/notifications/read", protect, markNotificationsAsRead);
-router.get("/sent", protect, getSentRequests); // ✅ New route
+
+// 📌 Users who have pending requests FROM me
+router.get("/sent", protect, getSentRequests);
 
 export default router;
