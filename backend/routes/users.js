@@ -1,8 +1,9 @@
 // backend/routes/userRoutes.js
 
 import express from "express";
-import multer from "multer";
 import { protect } from "../middleware/auth.js";
+import { memoryUpload } from "../middleware/upload.js"; // ⬅️ NEW IMPORT
+
 import {
   getMyProfile,
   getUserProfile,
@@ -13,28 +14,24 @@ import {
 
 const router = express.Router();
 
-// 🔁 Multer config (store image in memory)
-const upload = multer({ storage: multer.memoryStorage() });
-
 /* ============================================================
-   ⚠️ ROUTE ORDER IS IMPORTANT
-   "/all" and "/me" MUST be above "/:id"
-   OTHERWISE "/:id" captures them as params → undefined error
-===============================================================*/
+   ⚠️ ROUTE ORDER IMPORTANT
+   "/all" and "/me" MUST come before "/:id"
+============================================================ */
 
-// 🔹 Get all users (network page)
+// 🔹 Get all users
 router.get("/all", protect, getAllUsers);
 
 // 🔹 Get logged-in user's profile
 router.get("/me", protect, getMyProfile);
 
-// 🔹 Get any user profile by ID
+// 🔹 Get profile by ID
 router.get("/:id", protect, getUserProfile);
 
-// 🔹 Update user bio, headline, about
+// 🔹 Update text fields (bio/headline/about/location)
 router.put("/update", protect, updateUser);
 
-// 🔹 Update user avatar (profile picture)
-router.put("/avatar", protect, upload.single("avatar"), updateAvatar);
+// 🔹 Update avatar using memory storage (Cloudinary ready)
+router.put("/avatar", protect, memoryUpload.single("avatar"), updateAvatar);
 
 export default router;

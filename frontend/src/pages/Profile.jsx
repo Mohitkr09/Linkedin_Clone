@@ -41,7 +41,7 @@ export default function Profile() {
       setBio(res.data.bio || "");
       setAbout(res.data.about || "");
       setAvatarPreview(res.data.avatar || null);
-    } catch (err) {
+    } catch {
       navigate("/");
     }
   };
@@ -75,7 +75,7 @@ export default function Profile() {
       setUser((u) => ({ ...u, avatar: updatedAvatar }));
       localStorage.setItem(
         "user",
-        JSON.stringify({ ...storedUser, _id: storedUser._id, avatar: updatedAvatar })
+        JSON.stringify({ ...storedUser, avatar: updatedAvatar })
       );
 
       window.dispatchEvent(new Event("storage"));
@@ -84,7 +84,7 @@ export default function Profile() {
     }
   };
 
-  /* SAVE PROFILE TEXT FIELDS */
+  /* SAVE PROFILE FIELDS */
   const saveField = async (field) => {
     const body =
       field === "headline"
@@ -99,6 +99,7 @@ export default function Profile() {
       });
 
       setUser((prev) => ({ ...prev, ...res.data }));
+
       if (field === "headline") setEditHeadline(false);
       if (field === "bio") setEditBio(false);
       if (field === "about") setEditAbout(false);
@@ -114,65 +115,45 @@ export default function Profile() {
       </div>
     );
 
-  const fallbackAvatar = "https://cdn-icons-png.flaticon.com/512/3135/3135715.png";
+  const fallbackAvatar =
+    "https://cdn-icons-png.flaticon.com/512/3135/3135715.png";
   const isOwner = String(storedUser?._id) === String(user?._id);
 
   return (
     <div className="bg-gray-100 min-h-screen flex justify-center py-8 px-4">
       <div className="max-w-3xl w-full bg-white rounded-xl shadow border">
-        
-        {/* COVER + PROFILE PHOTO */}
+        {/* COVER + PROFILE IMAGE */}
         <div className="h-40 bg-gradient-to-r from-[#0A66C2] to-[#004182] relative">
-          <div className="absolute -bottom-14 left-8 flex items-center gap-4">
-            <label className="relative cursor-pointer group">
+          <div className="absolute -bottom-14 left-8 flex items-center gap-4 group">
+            <label className="relative cursor-pointer">
               <img
                 src={avatarPreview || user.avatar || fallbackAvatar}
                 alt="avatar"
-                className="w-28 h-28 rounded-full border-4 border-white shadow object-cover"
+                className="w-28 h-28 rounded-full border-4 border-white shadow object-cover group-hover:opacity-70 transition"
               />
 
-              {/* Upload button area */}
               {isOwner && (
                 <>
                   <input
                     type="file"
                     className="absolute inset-0 opacity-0 cursor-pointer"
+                    accept="image/*"
                     onChange={handleAvatarChange}
                   />
-                  {/* Add Photo label */}
-                  {!user.avatar && !uploading && (
-                    <span className="absolute bottom-0 left-0 text-xs bg-white px-2 py-1 rounded shadow text-[#0A66C2]">
-                      Add Photo
-                    </span>
-                  )}
+
+                  {/* SHOW TEXT ON HOVER */}
+                  <span className="absolute inset-0 hidden group-hover:flex justify-center items-center bg-black/50 text-white text-xs rounded-full">
+                    Change Photo
+                  </span>
                 </>
               )}
 
-              {/* Uploading overlay */}
               {uploading && (
                 <div className="absolute inset-0 bg-black/50 flex justify-center items-center text-white text-xs rounded-full">
                   Uploading...
                 </div>
               )}
             </label>
-
-            {/* Button always visible for owner */}
-            {isOwner && (
-              <button
-                onClick={() => document.getElementById("avatar-input").click()}
-                className="px-4 py-1 bg-[#0A66C2] text-white rounded-full shadow text-sm hover:bg-[#004182]"
-              >
-                {user.avatar ? "Change Photo" : "Add Profile Picture"}
-              </button>
-            )}
-
-            <input
-              id="avatar-input"
-              type="file"
-              className="hidden"
-              accept="image/*"
-              onChange={handleAvatarChange}
-            />
           </div>
         </div>
 
@@ -206,8 +187,12 @@ export default function Profile() {
           />
 
           <div className="flex gap-10 mt-6 text-sm text-gray-600 border-t pt-4">
-            <p><b>{user.followers?.length || 0}</b> followers</p>
-            <p><b>{user.following?.length || 0}</b> following</p>
+            <p>
+              <b>{user.followers?.length || 0}</b> followers
+            </p>
+            <p>
+              <b>{user.following?.length || 0}</b> following
+            </p>
           </div>
         </div>
 
@@ -230,7 +215,7 @@ export default function Profile() {
   );
 }
 
-/* SUB COMPONENT: EDIT FIELD */
+/* EDIT FIELD COMPONENT */
 function Editable({
   label,
   value,
@@ -311,14 +296,11 @@ function Editable({
   );
 }
 
-/* SAVE/CANCEL BUTTONS */
+/* SAVE / CANCEL BUTTONS */
 function Buttons({ save, cancel }) {
   return (
     <div className="flex mt-2 gap-3">
-      <button
-        onClick={save}
-        className="px-4 py-1 bg-[#0A66C2] text-white rounded-full"
-      >
+      <button onClick={save} className="px-4 py-1 bg-[#0A66C2] text-white rounded-full">
         Save
       </button>
       <button onClick={cancel} className="px-4 py-1 border rounded-full">

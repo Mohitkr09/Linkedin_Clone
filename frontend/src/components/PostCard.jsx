@@ -1,5 +1,5 @@
 // src/components/PostCard.jsx
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import API from "../api";
 import {
   Heart,
@@ -18,25 +18,42 @@ const PostCard = ({ post, currentUser, onDelete, onEdit, onShare }) => {
   const [likes, setLikes] = useState(post.likes?.length || 0);
   const [liked, setLiked] = useState(post.likes?.includes(currentUser?._id));
   const [menuOpen, setMenuOpen] = useState(false);
+
   const [comments, setComments] = useState(post.comments || []);
   const [commentText, setCommentText] = useState("");
   const [commenting, setCommenting] = useState(false);
   const [showComments, setShowComments] = useState(false);
+
   const [editingPost, setEditingPost] = useState(null);
 
   const [shareMenuOpen, setShareMenuOpen] = useState(false);
   const [shareCount, setShareCount] = useState(post.shareCount || 0);
 
+  const menuRef = useRef(null);
   const postUrl = `${window.location.origin}/post/${localPost._id}`;
 
   /* ======================================================
-     👤 OWNER CHECK — supports both populated user & ID
+     👤 OWNER CHECK — supports populated user & ID reference
   ====================================================== */
   const isOwner =
     String(localPost.user?._id || localPost.user) === String(currentUser?._id);
 
   /* ======================================================
-     👍 LIKE / UNLIKE
+     📌 CLOSE MENUS ON OUTSIDE CLICK
+  ====================================================== */
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target)) {
+        setMenuOpen(false);
+        setShareMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  /* ======================================================
+     👍 LIKE / UNLIKE POST
   ====================================================== */
   const handleLike = async () => {
     try {
@@ -52,11 +69,11 @@ const PostCard = ({ post, currentUser, onDelete, onEdit, onShare }) => {
      🗑 DELETE POST
   ====================================================== */
   const handleDelete = async () => {
-    if (!confirm("Are you sure you want to delete this post?")) return;
+    if (!confirm("Delete this post permanently?")) return;
 
     try {
       await API.delete(`/posts/${localPost._id}`);
-      onDelete?.(localPost._id); // Remove from feed
+      onDelete?.(localPost._id);
     } catch (err) {
       console.error("❌ Delete failed:", err);
       alert("Failed to delete post.");
@@ -64,7 +81,7 @@ const PostCard = ({ post, currentUser, onDelete, onEdit, onShare }) => {
   };
 
   /* ======================================================
-     💬 ADD COMMENT
+     💬 COMMENT
   ====================================================== */
   const handleComment = async () => {
     if (!commentText.trim()) return;
@@ -77,7 +94,7 @@ const PostCard = ({ post, currentUser, onDelete, onEdit, onShare }) => {
 
       if (res.data?.comments) {
         setComments(res.data.comments);
-        setLocalPost((p) => ({ ...p, comments: res.data.comments }));
+        setLocalPost((prev) => ({ ...prev, comments: res.data.comments }));
       }
 
       setCommentText("");
@@ -90,11 +107,11 @@ const PostCard = ({ post, currentUser, onDelete, onEdit, onShare }) => {
   };
 
   /* ======================================================
-     ✏️ EDIT POST (MODAL RETURN HANDLING)
+     ✏️ SAVE EDITED POST FROM MODAL
   ====================================================== */
   const handleEditSave = (updatedPost) => {
     setLocalPost(updatedPost);
-    onEdit?.(updatedPost); // Inform parent feed
+    onEdit?.(updatedPost);
     setEditingPost(null);
   };
 
@@ -118,17 +135,19 @@ const PostCard = ({ post, currentUser, onDelete, onEdit, onShare }) => {
   ====================================================== */
   const copyLink = async () => {
     await navigator.clipboard.writeText(postUrl);
-    alert("🔗 Link copied");
+    alert("🔗 Post link copied!");
     setShareMenuOpen(false);
   };
 
   return (
-    <div className="bg-white rounded-xl border shadow-sm hover:shadow-md transition">
-      {/* HEADER */}
+    <div className="bg-white rounded-xl border shadow-sm hover:shadow-lg transition">
+      
+      {/* ================= HEADER ================= */}
       <div className="p-4 flex justify-between">
         <div className="flex gap-3">
           <img
             src={localPost.user?.avatar || "/default-avatar.png"}
+            alt="avatar"
             className="w-10 h-10 rounded-full object-cover"
           />
           <div>
@@ -139,32 +158,35 @@ const PostCard = ({ post, currentUser, onDelete, onEdit, onShare }) => {
           </div>
         </div>
 
+        {/* THREE DOTS MENU */}
         {isOwner && (
-          <div className="relative">
+          <div ref={menuRef} className="relative">
             <button
-              onClick={() => setMenuOpen(!menuOpen)}
-              className="text-gray-400 hover:text-gray-600"
+              onClick={() => setMenuOpen((prev) => !prev)}
+              className={`p-2 rounded-full hover:bg-gray-100 transition ${
+                menuOpen ? "bg-gray-100" : ""
+              }`}
             >
-              <MoreHorizontal />
+              <MoreHorizontal className="w-5 h-5 text-gray-600" />
             </button>
 
             {menuOpen && (
-              <div className="absolute right-0 bg-white border rounded-md shadow-md w-32">
+              <div className="absolute right-0 mt-2 bg-white border rounded-md shadow-md w-36 z-20">
                 <button
-                  className="flex items-center px-3 py-2 text-sm w-full hover:bg-gray-100"
                   onClick={() => {
                     setMenuOpen(false);
                     setEditingPost(localPost);
                   }}
+                  className="flex px-3 py-2 items-center w-full hover:bg-gray-100 text-sm"
                 >
-                  <Edit2 className="w-4 h-4 mr-2" /> Edit
+                  <Edit2 className="w-4 h-4 mr-2" /> Edit Post
                 </button>
 
                 <button
-                  className="flex items-center px-3 py-2 text-sm w-full text-red-600 hover:bg-gray-100"
                   onClick={handleDelete}
+                  className="flex px-3 py-2 items-center w-full hover:bg-gray-100 text-sm text-red-600"
                 >
-                  <Trash2 className="w-4 h-4 mr-2" /> Delete
+                  <Trash2 className="w-4 h-4 mr-2" /> Delete Post
                 </button>
               </div>
             )}
@@ -172,22 +194,22 @@ const PostCard = ({ post, currentUser, onDelete, onEdit, onShare }) => {
         )}
       </div>
 
-      {/* CONTENT */}
+      {/* ================= CONTENT ================= */}
       {localPost.content && (
         <p className="px-4 pb-2 text-gray-800 whitespace-pre-wrap text-sm">
           {localPost.content}
         </p>
       )}
 
-      {/* MEDIA */}
       {localPost.image && (
         <img src={localPost.image} className="w-full max-h-[480px] object-cover" />
       )}
+
       {localPost.video && (
         <video src={localPost.video} controls className="w-full" />
       )}
 
-      {/* ACTIONS */}
+      {/* ================= ACTIONS ================= */}
       <div className="flex justify-between px-4 py-2 text-sm text-gray-600 border-t">
         <button
           onClick={handleLike}
@@ -210,22 +232,24 @@ const PostCard = ({ post, currentUser, onDelete, onEdit, onShare }) => {
         {/* SHARE */}
         <div className="relative">
           <button
-            onClick={() => setShareMenuOpen(!shareMenuOpen)}
+            onClick={() => setShareMenuOpen((prev) => !prev)}
             className="flex gap-1 items-center hover:text-[#0A66C2]"
           >
-            <Share2 />
-            {shareCount}
+            <Share2 /> {shareCount}
           </button>
 
           {shareMenuOpen && (
-            <div className="absolute right-0 bg-white shadow border w-40 p-2 rounded-md">
-              <button className="flex gap-2 py-1 px-2 w-full hover:bg-gray-100" onClick={copyLink}>
+            <div className="absolute right-0 bg-white border shadow w-40 p-2 rounded-md">
+              <button
+                onClick={copyLink}
+                className="flex gap-2 py-1 px-2 w-full hover:bg-gray-100"
+              >
                 <Link2 className="w-4" /> Copy link
               </button>
 
               <button
-                className="flex gap-2 py-1 px-2 w-full text-[#0A66C2] hover:bg-gray-100"
                 onClick={handleInternalShare}
+                className="flex gap-2 py-1 px-2 w-full hover:bg-gray-100 text-[#0A66C2]"
               >
                 🔁 Share in app
               </button>
@@ -234,7 +258,7 @@ const PostCard = ({ post, currentUser, onDelete, onEdit, onShare }) => {
         </div>
       </div>
 
-      {/* COMMENTS */}
+      {/* ================= COMMENTS ================= */}
       {showComments && (
         <div className="px-4 py-2 bg-gray-50 border-t">
           {comments.map((c) => (
@@ -257,7 +281,6 @@ const PostCard = ({ post, currentUser, onDelete, onEdit, onShare }) => {
               value={commentText}
               onChange={(e) => setCommentText(e.target.value)}
             />
-
             <button
               disabled={commenting}
               onClick={handleComment}
@@ -269,13 +292,13 @@ const PostCard = ({ post, currentUser, onDelete, onEdit, onShare }) => {
         </div>
       )}
 
-      {/* EDIT MODAL */}
+      {/* ================= EDIT MODAL ================= */}
       {editingPost && (
         <EditPostModal
           post={editingPost}
           onSave={handleEditSave}
           onClose={() => setEditingPost(null)}
-          onDelete={handleDelete} // supports delete inside modal too
+          onDelete={handleDelete}
         />
       )}
     </div>
