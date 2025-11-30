@@ -75,7 +75,7 @@ export default function Profile() {
 
       setUser((u) => ({ ...u, avatar: updatedAvatar }));
 
-      // IMPORTANT FIX: Store avatar inside storedUser.user
+      // FIX: Update localStorage user.avatar correctly
       const updatedUserData = {
         ...storedUser,
         user: { ...storedUser.user, avatar: updatedAvatar },
@@ -88,7 +88,7 @@ export default function Profile() {
     }
   };
 
-  /* UPDATE PROFILE FIELDS */
+  /* SAVE PROFILE FIELDS */
   const saveField = async (field) => {
     const body =
       field === "headline"
@@ -123,11 +123,34 @@ export default function Profile() {
     "https://cdn-icons-png.flaticon.com/512/3135/3135715.png";
 
   /* ======================================================
-     👤 FIXED OWNER CHECK (WORKS NOW)
+     👤 FIXED OWNER CHECK
   ====================================================== */
   const loggedInId = storedUser?.user?._id || storedUser?._id;
   const isOwner =
     loggedInId && String(loggedInId).trim() === String(user?._id).trim();
+
+  /* ======================================================
+     🔁 FOLLOW / UNFOLLOW USER
+  ====================================================== */
+  const toggleFollow = async () => {
+    try {
+      const res = await axios.put(
+        `${API_URL}/users/follow/${user._id}`,
+        {},
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      // Update followers in UI instantly
+      setUser((prev) => ({
+        ...prev,
+        followers: prev.followers?.includes(loggedInId)
+          ? prev.followers.filter((id) => id !== loggedInId)
+          : [...prev.followers, loggedInId],
+      }));
+    } catch (error) {
+      console.error("FOLLOW ERROR:", error);
+    }
+  };
 
   return (
     <div className="bg-gray-100 min-h-screen flex justify-center py-8 px-4">
@@ -170,6 +193,22 @@ export default function Profile() {
         <div className="pt-20 px-8 pb-10">
           <h2 className="text-2xl font-bold">{user.name}</h2>
 
+          {/* FOLLOW BUTTON */}
+          {!isOwner && (
+            <button
+              onClick={toggleFollow}
+              className={`px-4 py-1 mt-2 rounded-full text-sm ${
+                user.followers?.includes(loggedInId)
+                  ? "bg-gray-200 text-black"
+                  : "bg-[#0A66C2] text-white"
+              }`}
+            >
+              {user.followers?.includes(loggedInId)
+                ? "Following ✔"
+                : "Follow"}
+            </button>
+          )}
+
           <Editable
             label="Headline"
             value={headline}
@@ -195,6 +234,7 @@ export default function Profile() {
             addLabel="Add Bio"
           />
 
+          {/* FOLLOWERS / FOLLOWING */}
           <div className="flex gap-10 mt-6 text-sm text-gray-600 border-t pt-4">
             <p>
               <b>{user.followers?.length || 0}</b> followers
@@ -224,7 +264,7 @@ export default function Profile() {
   );
 }
 
-/* EDIT FIELD COMPONENT */
+/* EDITABLE FIELD COMPONENT */
 function Editable({
   label,
   value,
