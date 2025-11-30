@@ -8,33 +8,36 @@ import {
   getUserProfile,
   updateUser,
   updateAvatar,
+  deleteAvatar,      // ⬅️ IMPORT DELETE
   getAllUsers,
 } from "../controllers/userController.js";
 
 const router = express.Router();
 
-// 🔁 Multer config (store image in memory)
+// Multer config (store file in memory for Cloudinary upload)
 const upload = multer({ storage: multer.memoryStorage() });
 
 /* ============================================================
-   ⚠️ ROUTE ORDER IS IMPORTANT
+   ROUTE ORDER IS IMPORTANT
    "/all" and "/me" MUST be above "/:id"
-   OTHERWISE "/:id" captures them as params → undefined error
-===============================================================*/
+============================================================ */
 
-// 🔹 Get all users (network page)
+// 🔹 Get all users
 router.get("/all", protect, getAllUsers);
 
-// 🔹 Get logged-in user's profile
+// 🔹 Get logged-in profile
 router.get("/me", protect, getMyProfile);
 
-// 🔹 Get any user profile by ID
+// 🔹 Get user by ID
 router.get("/:id", protect, getUserProfile);
 
-// 🔹 Update user bio, headline, about
+// 🔹 Update user profile data (bio, headline, about)
 router.put("/update", protect, updateUser);
 
-// 🔹 Update user avatar (profile picture)
+// 🔹 Update avatar (upload new profile picture)
 router.put("/avatar", protect, upload.single("avatar"), updateAvatar);
+
+// 🔻 Delete avatar (remove profile picture)
+router.delete("/avatar", protect, deleteAvatar);   // ⭐ REQUIRED
 
 export default router;
