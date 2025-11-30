@@ -16,7 +16,9 @@ import EditPostModal from "./EditPostModal";
 const PostCard = ({ post, currentUser, onDelete, onEdit, onShare }) => {
   const [localPost, setLocalPost] = useState(post);
   const [likes, setLikes] = useState(post.likes?.length || 0);
-  const [liked, setLiked] = useState(post.likes?.includes(currentUser?._id));
+  const [liked, setLiked] = useState(
+    post.likes?.includes(currentUser?._id || currentUser?.user?._id)
+  );
   const [menuOpen, setMenuOpen] = useState(false);
 
   const [comments, setComments] = useState(post.comments || []);
@@ -33,10 +35,22 @@ const PostCard = ({ post, currentUser, onDelete, onEdit, onShare }) => {
   const postUrl = `${window.location.origin}/post/${localPost._id}`;
 
   /* ======================================================
-     👤 OWNER CHECK — supports populated user & ID reference
+     👤 OWNER CHECK — FINAL FIX
+     Handles:
+     - currentUser._id
+     - currentUser.user._id
+     - post.user as object or string
   ====================================================== */
+  const loggedInUserId =
+    currentUser?._id || currentUser?.user?._id || null;
+
+  const postOwnerId =
+    typeof localPost.user === "object" ? localPost.user._id : localPost.user;
+
   const isOwner =
-    String(localPost.user?._id || localPost.user) === String(currentUser?._id);
+    loggedInUserId &&
+    postOwnerId &&
+    String(loggedInUserId).trim() === String(postOwnerId).trim();
 
   /* ======================================================
      📌 CLOSE MENUS ON OUTSIDE CLICK
@@ -107,7 +121,7 @@ const PostCard = ({ post, currentUser, onDelete, onEdit, onShare }) => {
   };
 
   /* ======================================================
-     ✏️ SAVE EDITED POST FROM MODAL
+     ✏️ SAVE EDITED POST
   ====================================================== */
   const handleEditSave = (updatedPost) => {
     setLocalPost(updatedPost);
@@ -116,7 +130,7 @@ const PostCard = ({ post, currentUser, onDelete, onEdit, onShare }) => {
   };
 
   /* ======================================================
-     🔁 SHARE INSIDE APP
+     🔁 INTERNAL SHARE
   ====================================================== */
   const handleInternalShare = async () => {
     try {
@@ -140,8 +154,8 @@ const PostCard = ({ post, currentUser, onDelete, onEdit, onShare }) => {
   };
 
   return (
-    <div className="bg-white rounded-xl border shadow-sm hover:shadow-lg transition">
-      
+    <div className="bg-white rounded-xl border shadow-sm hover:shadow-md transition">
+
       {/* ================= HEADER ================= */}
       <div className="p-4 flex justify-between">
         <div className="flex gap-3">
@@ -158,16 +172,14 @@ const PostCard = ({ post, currentUser, onDelete, onEdit, onShare }) => {
           </div>
         </div>
 
-        {/* THREE DOTS MENU */}
+        {/* ================= THREE DOTS MENU ================= */}
         {isOwner && (
           <div ref={menuRef} className="relative">
             <button
               onClick={() => setMenuOpen((prev) => !prev)}
-              className={`p-2 rounded-full hover:bg-gray-100 transition ${
-                menuOpen ? "bg-gray-100" : ""
-              }`}
+              className="p-2 rounded-full hover:bg-gray-100 transition"
             >
-              <MoreHorizontal className="w-5 h-5 text-gray-600" />
+              <MoreHorizontal className="w-5 h-5 text-gray-500" />
             </button>
 
             {menuOpen && (
@@ -229,7 +241,7 @@ const PostCard = ({ post, currentUser, onDelete, onEdit, onShare }) => {
           {comments.length}
         </button>
 
-        {/* SHARE */}
+        {/* SHARE MENU */}
         <div className="relative">
           <button
             onClick={() => setShareMenuOpen((prev) => !prev)}
@@ -244,14 +256,14 @@ const PostCard = ({ post, currentUser, onDelete, onEdit, onShare }) => {
                 onClick={copyLink}
                 className="flex gap-2 py-1 px-2 w-full hover:bg-gray-100"
               >
-                <Link2 className="w-4" /> Copy link
+                <Link2 className="w-4" /> Copy Link
               </button>
 
               <button
                 onClick={handleInternalShare}
                 className="flex gap-2 py-1 px-2 w-full hover:bg-gray-100 text-[#0A66C2]"
               >
-                🔁 Share in app
+                🔁 Share in App
               </button>
             </div>
           )}

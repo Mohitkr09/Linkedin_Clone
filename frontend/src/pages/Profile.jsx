@@ -32,6 +32,7 @@ export default function Profile() {
   const fetchProfile = async () => {
     try {
       const endpoint = id ? `/users/${id}` : "/users/me";
+
       const res = await axios.get(`${API_URL}${endpoint}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -73,18 +74,21 @@ export default function Profile() {
       const updatedAvatar = res.data.avatar;
 
       setUser((u) => ({ ...u, avatar: updatedAvatar }));
-      localStorage.setItem(
-        "user",
-        JSON.stringify({ ...storedUser, avatar: updatedAvatar })
-      );
 
+      // IMPORTANT FIX: Store avatar inside storedUser.user
+      const updatedUserData = {
+        ...storedUser,
+        user: { ...storedUser.user, avatar: updatedAvatar },
+      };
+
+      localStorage.setItem("user", JSON.stringify(updatedUserData));
       window.dispatchEvent(new Event("storage"));
     } finally {
       setUploading(false);
     }
   };
 
-  /* SAVE PROFILE FIELDS */
+  /* UPDATE PROFILE FIELDS */
   const saveField = async (field) => {
     const body =
       field === "headline"
@@ -117,11 +121,18 @@ export default function Profile() {
 
   const fallbackAvatar =
     "https://cdn-icons-png.flaticon.com/512/3135/3135715.png";
-  const isOwner = String(storedUser?._id) === String(user?._id);
+
+  /* ======================================================
+     👤 FIXED OWNER CHECK (WORKS NOW)
+  ====================================================== */
+  const loggedInId = storedUser?.user?._id || storedUser?._id;
+  const isOwner =
+    loggedInId && String(loggedInId).trim() === String(user?._id).trim();
 
   return (
     <div className="bg-gray-100 min-h-screen flex justify-center py-8 px-4">
       <div className="max-w-3xl w-full bg-white rounded-xl shadow border">
+
         {/* COVER + PROFILE IMAGE */}
         <div className="h-40 bg-gradient-to-r from-[#0A66C2] to-[#004182] relative">
           <div className="absolute -bottom-14 left-8 flex items-center gap-4 group">
@@ -140,8 +151,6 @@ export default function Profile() {
                     accept="image/*"
                     onChange={handleAvatarChange}
                   />
-
-                  {/* SHOW TEXT ON HOVER */}
                   <span className="absolute inset-0 hidden group-hover:flex justify-center items-center bg-black/50 text-white text-xs rounded-full">
                     Change Photo
                   </span>
